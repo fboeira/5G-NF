@@ -1,0 +1,2915 @@
+theory 5G begin
+
+// Function signature and definition of the equational theory E
+
+builtins: multiset
+functions: FX/2, KDFA/2, NIA/2, SHA256/2, adec/2, aenc/2, decap/2,
+           encap/2, f1/2, f2/2, f3/2, f4/2, f5/2, fst/1, getcipher/1, getkey/1,
+           pair/2, pk/1, sdec/2, senc/2, sign/2, snd/1, true/0, verify/3
+equations:
+    adec(aenc(x.1, pk(x.2)), x.2) = x.1,
+    decap(sk, getcipher(encap(pk(sk), R))) = getkey(encap(pk(sk), R)),
+    fst(<x.1, x.2>) = x.1,
+    sdec(senc(x.1, x.2), x.2) = x.1,
+    snd(<x.1, x.2>) = x.2,
+    verify(sign(x.1, x.2), x.1, pk(x.2)) = true
+
+
+
+/* looping facts with injective instances: UESQN/3 */
+
+rule (modulo E) send_insecure:
+   [ F_SndS( <channelname, SendType, ReceiveType>, A, B, m ) ]
+  --[ SendInsecure( channelname, A, B, m ) ]->
+   [
+   Sec( <channelname, SendType, ReceiveType>, A, B, m ),
+   Out( <<channelname, SendType, ReceiveType>, A, B, m> )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) receive_insecure:
+   [ In( <<channelname, SendType, ReceiveType>, A, B, m> ) ]
+  --[ ReceiveInsecure( channelname, A, B, m ) ]->
+   [ F_RcvS( <channelname, SendType, ReceiveType>, A, B, m ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) init_ServNet:
+   [ ]
+  --[ ServNet( $VPLMNID ), SERV_NET( ) ]->
+   [ !SEAF( <'5G', $VPLMNID> ), Out( <'5G', $VPLMNID> ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) init_gNB:
+   [ !SEAF( SNID ) ] --[ GNB_init( $gNB ) ]-> [ !GNB( $gNB, SNID ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) init_ARPF:
+   [ Fr( ~HN ) ]
+  --[ ARPF_HomeNet( $ARPF ), Secret_HN( $ARPF, ~HN ) ]->
+   [ !ARPF( $ARPF, pk(~HN) ), !ARPF_HN( $ARPF, ~HN ), Out( pk(~HN) ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) init_AUSF:
+   [ !ARPF( $ARPF, pk_HN ) ]
+  --[ AUSF_HomeNet( $AUSF, $ARPF ), AUSF_ID( $AUSF ) ]->
+   [ !AUSF( $AUSF, $ARPF ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) init_UE_ARPF:
+   [ Fr( ~SUPI ), Fr( ~K ), Fr( ~sqn ), !ARPF( ARPF, pk_HN ) ]
+  --[
+  Subscribe( ~SUPI, ARPF ), Sqn_Create( ~sqn ), SUPI_ID( ~SUPI ),
+  LongTermKey( ~SUPI, ~K )
+  ]->
+   [
+   !LTKSym( ~SUPI, ARPF, ~K ), UESQN( ~SUPI, ARPF, ('1'+~sqn) ),
+   ARPFEntry( ARPF, ~SUPI, ('1'+~sqn), '1' ), Out( ~sqn ), Setup_NF( ~SUPI )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) UE_setup_send_req:
+   [
+   !LTKSym( ~SUPI, ARPF, ~K ), !ARPF( ARPF, pk_HN ), Fr( ~NF ), Fr( ~R ),
+   Setup_NF( ~SUPI )
+   ]
+  --[ UE_setup_send_req( ~SUPI, ARPF, ~NF ) ]->
+   [
+   Out( <
+         <getcipher(encap(pk_HN, ~R)), 
+          senc(<~SUPI, senc(<$t1, pk(~NF)>, ~K)>, getkey(encap(pk_HN, ~R)))>, 
+         sign(<~SUPI, senc(<$t1, pk(~NF)>, ~K)>, ~NF)>
+   ),
+   UE_sent_req( ~SUPI, ARPF, ~NF )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) HN_recv_setup_req_send_res:
+   [
+   In( <<C0, senc(<~SUPI, senc(<$t1, pk_NF>, ~K)>, k_ECIES)>, sig_req> ),
+   !ARPF_HN( $ARPF, ~HN ), !LTKSym( ~SUPI, $ARPF, ~K ), Fr( ~R )
+   ]
+  --[
+  Eq( verify(sig_req, <~SUPI, senc(<$t1, pk_NF>, ~K)>, pk_NF), true ),
+  HN_recv_setup_req_send_res( $ARPF, ~SUPI, pk_NF ),
+  Secret_HN( $ARPF, ~HN )
+  ]->
+   [
+   Out( <$t2, sign(<$t2, ~SUPI, pk_NF>, ~HN)> ),
+   !ARPF_NF_Setup( ~SUPI, <$t2, sign(<$t2, ~SUPI, pk_NF>, ~HN), pk_NF> )
+   ]
+
+  /*
+  rule (modulo AC) HN_recv_setup_req_send_res:
+     [
+     In( <<C0, senc(<~SUPI, senc(<$t1, pk_NF>, ~K)>, k_ECIES)>, sig_req> ),
+     !ARPF_HN( $ARPF, ~HN ), !LTKSym( ~SUPI, $ARPF, ~K ), Fr( ~R )
+     ]
+    --[
+    Eq( z, true ), HN_recv_setup_req_send_res( $ARPF, ~SUPI, pk_NF ),
+    Secret_HN( $ARPF, ~HN )
+    ]->
+     [
+     Out( <$t2, sign(<$t2, ~SUPI, pk_NF>, ~HN)> ),
+     !ARPF_NF_Setup( ~SUPI, <$t2, sign(<$t2, ~SUPI, pk_NF>, ~HN), pk_NF> )
+     ]
+    variants (modulo AC)
+    1. $t1   = $t1.13
+       ~K    = ~K.13
+       ~SUPI = ~SUPI.13
+       pk_NF = pk_NF.13
+       sig_req
+             = sig_req.13
+       z     = verify(sig_req.13, <~SUPI.13, senc(<$t1.13, pk_NF.13>, ~K.13)>,
+                      pk_NF.13)
+    
+    2. $t1   = $x.13
+       ~K    = ~x.16
+       ~SUPI = ~x.18
+       pk_NF = pk(x.21)
+       sig_req
+             = sign(<~x.18, senc(<$x.13, pk(x.21)>, ~x.16)>, x.21)
+       z     = true
+  */
+
+rule (modulo E) UE_recv_setup_res:
+   [
+   UE_sent_req( ~SUPI, ARPF, ~NF ), In( <$t2, sig_setup> ),
+   !ARPF( ARPF, pk_HN ), !LTKSym( ~SUPI, ARPF, ~K )
+   ]
+  --[
+  Eq( verify(sig_setup, <$t2, ~SUPI, pk(~NF)>, pk_HN), true ),
+  UE_recv_setup_res( ~SUPI, ARPF, ~NF ),
+  Dispute( ~SUPI, <$t2, sig_setup, pk(~NF)> ), Secret_NF( ~NF )
+  ]->
+   [
+   !UE_NF_Setup( ~SUPI, ~NF, <$t2, sig_setup, pk(~NF)> ),
+   !Rev_NF( ~SUPI, ~NF )
+   ]
+
+  /*
+  rule (modulo AC) UE_recv_setup_res:
+     [
+     UE_sent_req( ~SUPI, ARPF, ~NF ), In( <$t2, sig_setup> ),
+     !ARPF( ARPF, pk_HN ), !LTKSym( ~SUPI, ARPF, ~K )
+     ]
+    --[
+    Eq( z, true ), UE_recv_setup_res( ~SUPI, ARPF, ~NF ),
+    Dispute( ~SUPI, <$t2, sig_setup, pk(~NF)> ), Secret_NF( ~NF )
+    ]->
+     [
+     !UE_NF_Setup( ~SUPI, ~NF, <$t2, sig_setup, pk(~NF)> ),
+     !Rev_NF( ~SUPI, ~NF )
+     ]
+    variants (modulo AC)
+    1. $t2   = $t2.9
+       ~NF   = ~NF.9
+       ~SUPI = ~SUPI.9
+       pk_HN = pk_HN.9
+       sig_setup
+             = sig_setup.9
+       z     = verify(sig_setup.9, <$t2.9, ~SUPI.9, pk(~NF.9)>, pk_HN.9)
+    
+    2. $t2   = $x.9
+       ~NF   = ~x.11
+       ~SUPI = ~x.12
+       pk_HN = pk(x.14)
+       sig_setup
+             = sign(<$x.9, ~x.12, pk(~x.11)>, x.14)
+       z     = true
+  */
+
+rule (modulo E) reveal_NF:
+   [ !Rev_NF( ~SUPI, ~NF ) ]
+  --[ Rev( <'NF', ~SUPI, ~NF> ) ]->
+   [ Out( ~NF ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) reveal_HN:
+   [ !ARPF_HN( $ARPF, ~HN ) ]
+  --[ Rev( <'HN', $ARPF, ~HN> ) ]->
+   [ Out( ~HN ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) reveal_LTKSym:
+   [ !LTKSym( ~SUPI, ARPF, K ) ]
+  --[ Rev( <~SUPI, ARPF> ), RevealKforSUPI( ~SUPI ) ]->
+   [ Out( <K, ~SUPI> ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ue_send_attachReq:
+   [
+   !LTKSym( ~SUPI, ARPF, K ), !GNB( $gNB, SNID ), !ARPF( ARPF, pk_HN ),
+   Fr( ~R ), !UE_NF_Setup( ~SUPI, ~NF, beta_SUPI )
+   ]
+  --[ UE_send_attach( ) ]->
+   [
+   St_1_USIM( ~SUPI, ARPF, K, $gNB, getkey(encap(pk_HN, ~R)),
+              'integrity_encryption', SNID
+   ),
+   Out( <
+         <getcipher(encap(pk_HN, ~R)), senc(~SUPI, getkey(encap(pk_HN, ~R)))>, 
+         ARPF, 'integrity_encryption', $gNB>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) gNB_receive_attachReq[color=#edc080]:
+   [
+   !GNB( $gNB, SNID ), In( <SUCI, ARPF, UE_sec_capabilities, $gNB> ),
+   Fr( ~gNB_State_ID ), In( UE_sec_capabilities )
+   ]
+  --[
+  Out_Attach_UE_sec_capabilities( UE_sec_capabilities ),
+  GNB_State_ID_source( ~gNB_State_ID ), Relay( SUCI ), Relay( ARPF ),
+  Relay( UE_sec_capabilities ), GNB_receive_attachReq( )
+  ]->
+   [
+   St_1_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB ),
+   F_SndS( <'gNB_seaf', 'gNB', 'SEAF'>, $gNB, SNID,
+           <'attach', <SUCI, ARPF, UE_sec_capabilities, $gNB>, ~gNB_State_ID>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) seaf_receive_attachReq[color=#0037ff]:
+   [
+   !SEAF( SNID ), Fr( ~SEAF_State_ID ), In( UE_sec_capabilities ),
+   In( SUCI ),
+   F_RcvS( <'gNB_seaf', 'gNB', 'SEAF'>, $gNB, SNID,
+           <'attach', <SUCI, ARPF, UE_sec_capabilities, $gNB>, ~gNB_State_ID>
+   )
+   ]
+  --[
+  StartSeafSession( SNID ), SEAF_SUPI( SNID, SUCI ),
+  In_Attach_SUPI( SUCI ),
+  In_Attach_UE_sec_capabilities( UE_sec_capabilities ), SEAF_ID( SNID ),
+  SEAF_State_ID_source( ~SEAF_State_ID ), SEAF_receive_attachReq( )
+  ]->
+   [
+   St_1_SEAF( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, ~SEAF_State_ID,
+              UE_sec_capabilities
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) seaf_send_air[color=#0037ff]:
+   [
+   St_1_SEAF( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, SEAF_State_ID,
+              UE_sec_capabilities
+   ),
+   In( UE_sec_capabilities ), In( SNID ), !AUSF( AUSF, ARPF )
+   ]
+  --[ Send_AIR_to( AUSF, ARPF ) ]->
+   [
+   St_2_SEAF( ~gNB_State_ID, SNID, SUCI, ARPF, AUSF, SEAF_State_ID, $gNB,
+              UE_sec_capabilities
+   ),
+   F_SndS( <'seaf_ausf', 'SEAF', 'AUSF'>, SNID, AUSF,
+           <'air', <SUCI, SNID, '3gpp_creds'>, SEAF_State_ID>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ausf_receive_air:
+   [
+   !AUSF( AUSF, ARPF ), Fr( ~AUSF_State_ID ), In( SUCI ), In( SNID ),
+   F_RcvS( <'seaf_ausf', 'SEAF', 'AUSF'>, SNID, AUSF,
+           <'air', <SUCI, SNID, '3gpp_creds'>, SEAF_State_ID>
+   )
+   ]
+  --[ StartAUSFSession( AUSF ), AUSF_State_ID_source( ~AUSF_State_ID ) ]->
+   [ St_1_AUSF( ~AUSF_State_ID, SNID, SUCI, ARPF, AUSF, SEAF_State_ID ) ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ausf_send_AIReq:
+   [ St_1_AUSF( ~AUSF_State_ID, SNID, SUCI, ARPF, AUSF, SEAF_State_ID ) ]
+  --[
+  AUSF_source( AUSF ), ARPF_source( ARPF ), SEAF_source( SNID ),
+  AUSF_Single_Session( AUSF )
+  ]->
+   [
+   St_2_AUSF( ~AUSF_State_ID, SNID, SUCI, ARPF, AUSF, SEAF_State_ID ),
+   F_SndS( <'ausf_arpf', 'AUSF', 'ARPF'>, AUSF, ARPF,
+           <'air', <SUCI, SNID, '3gpp_creds'>, ~AUSF_State_ID>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) arpf_receive_AIReq:
+   [
+   !ARPF( ARPF, pk_HN ), !AUSF( AUSF, ARPF ), !ARPF_HN( ARPF, ~HN ),
+   In( <C0, C> ), !LTKSym( sdec(C, decap(~HN, C0)), ARPF, K ),
+   ARPFEntry( ARPF, sdec(C, decap(~HN, C0)), SQN, count ),
+   Fr( ~ARPF_State_ID ), In( count ),
+   F_RcvS( <'ausf_arpf', 'AUSF', 'ARPF'>, AUSF, ARPF,
+           <'air', <<C0, C>, SNID, '3gpp_creds'>, ~AUSF_State_ID>
+   )
+   ]
+  --[
+  Helper_kECIES_source( decap(~HN, C0) ), StartARPFSession( ARPF ),
+  Sqn_ARPF_Use( SQN, count ), ARPF_1( )
+  ]->
+   [
+   ARPFEntry( ARPF, sdec(C, decap(~HN, C0)), ('1'+SQN), ('1'+count) ),
+   St_1_ARPF( ~ARPF_State_ID, ARPF, AUSF, sdec(C, decap(~HN, C0)), SNID, K,
+              decap(~HN, C0), ('1'+SQN), ~AUSF_State_ID
+   )
+   ]
+
+  // loop breaker: [5]
+  /*
+  rule (modulo AC) arpf_receive_AIReq:
+     [
+     !ARPF( ARPF, pk_HN ), !AUSF( AUSF, ARPF ), !ARPF_HN( ARPF, ~HN ),
+     In( <C0, C> ), !LTKSym( z, ARPF, K ), ARPFEntry( ARPF, z, SQN, count ),
+     Fr( ~ARPF_State_ID ), In( count ),
+     F_RcvS( <'ausf_arpf', 'AUSF', 'ARPF'>, AUSF, ARPF,
+             <'air', <<C0, C>, SNID, '3gpp_creds'>, ~AUSF_State_ID>
+     )
+     ]
+    --[
+    Helper_kECIES_source( z.1 ), StartARPFSession( ARPF ),
+    Sqn_ARPF_Use( SQN, count ), ARPF_1( )
+    ]->
+     [
+     ARPFEntry( ARPF, z, ('1'+SQN), ('1'+count) ),
+     St_1_ARPF( ~ARPF_State_ID, ARPF, AUSF, z, SNID, K, z.1, ('1'+SQN),
+                ~AUSF_State_ID
+     )
+     ]
+    variants (modulo AC)
+    1. ~HN   = ~HN.26
+       C     = C.29
+       C0    = C0.30
+       z     = sdec(C.29, decap(~HN.26, C0.30))
+       z.1   = decap(~HN.26, C0.30)
+    
+    2. ~HN   = ~HN.32
+       C     = senc(z.42, decap(~HN.32, C0.36))
+       C0    = C0.36
+       z     = z.42
+       z.1   = decap(~HN.32, C0.36)
+    
+    3. ~HN   = ~HN.116
+       C     = C.119
+       C0    = getcipher(encap(pk(~HN.116), x.228))
+       z     = sdec(C.119, getkey(encap(pk(~HN.116), x.228)))
+       z.1   = getkey(encap(pk(~HN.116), x.228))
+    
+    4. ~HN   = ~HN.116
+       C     = senc(z.126, getkey(encap(pk(~HN.116), x.228)))
+       C0    = getcipher(encap(pk(~HN.116), x.228))
+       z     = z.126
+       z.1   = getkey(encap(pk(~HN.116), x.228))
+    // loop breaker: [5]
+  */
+
+rule (modulo E) arpf_send_AIResp:
+   [
+   St_1_ARPF( ~ARPF_State_ID, ARPF, AUSF, ~SUPI, SNID, K, k_ECIES, SQN,
+              ~AUSF_State_ID
+   ),
+   Fr( ~RAND ), !ARPF_NF_Setup( ~SUPI, beta_SUPI )
+   ]
+  --[
+  Running( ARPF, <~SUPI, SNID, AUSF, ARPF>,
+           KDFA(KDFA(<f3(K, ~RAND), f4(K, ~RAND)>, <SNID, SQN>), SNID),
+           <'ARPF', 'K_SEAF'>
+  ),
+  Src( ~RAND, <SQN, f1(K, <SQN, ~RAND>)> ), SrcRand( ~RAND, ~SUPI ),
+  Secret1( <~SUPI, SNID, AUSF, ARPF>, <'K_AUSF', ARPF>,
+           KDFA(<f3(K, ~RAND), f4(K, ~RAND)>, <SNID, SQN>)
+  ),
+  Honest( <~SUPI, ARPF> ), Honest( SNID ),
+  Out_AIResp( <~RAND, <SQN, f1(K, <SQN, ~RAND>)>, 
+               FX(<f3(K, ~RAND), f4(K, ~RAND), f2(K, ~RAND), ~RAND>, SNID), 
+               KDFA(<f3(K, ~RAND), f4(K, ~RAND)>, <SNID, SQN>)>
+  ),
+  ARPF_send( ARPF ), AUSF_State_ID_use( ~AUSF_State_ID )
+  ]->
+   [
+   F_SndS( <'ausf_arpf', 'ARPF', 'AUSF'>, ARPF, AUSF,
+           <'AIResp', 
+            <
+             <~RAND, <SQN, f1(K, <SQN, ~RAND>)>, 
+              FX(<f3(K, ~RAND), f4(K, ~RAND), f2(K, ~RAND), ~RAND>, SNID), 
+              KDFA(<f3(K, ~RAND), f4(K, ~RAND)>, <SNID, SQN>)>, 
+             ~SUPI, k_ECIES, beta_SUPI>, 
+            ~AUSF_State_ID>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ausf_receive_AIResp:
+   [
+   St_2_AUSF( ~AUSF_State_ID, SNID, SUCI, ARPF, AUSF, SEAF_State_ID ),
+   F_RcvS( <'ausf_arpf', 'ARPF', 'AUSF'>, ARPF, AUSF,
+           <'AIResp', 
+            <<RAND, AUTN, XRES_star, K_AUSF>, ~SUPI, k_ECIES, $t2, sig_setup, pk_NF
+            >, 
+            ~AUSF_State_ID>
+   )
+   ]
+  --[ In_AIResp( <RAND, AUTN, XRES_star, K_AUSF> ) ]->
+   [
+   St_3_AUSF( ~AUSF_State_ID, SNID, SUCI, ARPF, AUSF,
+              <RAND, AUTN, XRES_star, K_AUSF>, SEAF_State_ID, ~SUPI, k_ECIES,
+              <$t2, sig_setup, pk_NF>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ausf_send_aia:
+   [
+   St_3_AUSF( ~AUSF_State_ID, SNID, SUCI, ARPF, AUSF,
+              <RAND, AUTN, XRES_star, K_AUSF>, ~SEAF_State_ID, ~SUPI, k_ECIES,
+              beta_SUPI
+   )
+   ]
+  --[
+  Running( AUSF, <~SUPI, SNID, AUSF, ARPF>, KDFA(K_AUSF, SNID),
+           <'AUSF', 'K_SEAF'>
+  ),
+  Secret1( <~SUPI, SNID, AUSF, ARPF>, <'AUSF', AUSF>, KDFA(K_AUSF, SNID) ),
+  Honest( <~SUPI, ARPF> ), AUSF_source( AUSF ), SEAF_source( SNID ),
+  RAND_source( RAND ), AUTN_source( AUTN ), SUPI_source( ~SUPI ),
+  SEAF_State_ID_use( ~SEAF_State_ID )
+  ]->
+   [
+   St_4_AUSF( ~AUSF_State_ID, SNID, SUCI, ARPF, AUSF, XRES_star,
+              KDFA(K_AUSF, SNID), RAND, ~SEAF_State_ID, ~SUPI, k_ECIES, beta_SUPI
+   ),
+   F_SndS( <'seaf_ausf', 'AUSF', 'SEAF'>, AUSF, SNID,
+           <'aia', <<RAND, AUTN, SHA256(XRES_star, RAND)>, 'true'>, ~SEAF_State_ID>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) seaf_receive_aia[color=#0037ff]:
+   [
+   St_2_SEAF( ~gNB_State_ID, SNID, SUCI, ARPF, AUSF, ~SEAF_State_ID, $gNB,
+              UE_sec_capabilities
+   ),
+   In( UE_sec_capabilities ), In( SNID ),
+   F_RcvS( <'seaf_ausf', 'AUSF', 'SEAF'>, AUSF, SNID,
+           <'aia', <<RAND, AUTN, HXRES_star>, 'true'>, ~SEAF_State_ID>
+   )
+   ]
+  --[ SEAF_receive_aia( ) ]->
+   [
+   St_3_SEAF( ~SEAF_State_ID, SNID, SUCI, ARPF, AUSF, RAND, HXRES_star,
+              AUTN, ~gNB_State_ID, $gNB, UE_sec_capabilities
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) seaf_send_authReq[color=#0037ff]:
+   [
+   St_3_SEAF( ~SEAF_State_ID, SNID, SUCI, ARPF, AUSF, RAND, HXRES_star,
+              AUTN, ~gNB_State_ID, $gNB, UE_sec_capabilities
+   ),
+   In( UE_sec_capabilities )
+   ]
+  --[
+  Out_Src( RAND, AUTN ), AuthReq_RAND_source( RAND ),
+  AuthReq_AUTN_source( AUTN ), GNB_State_ID_use( ~gNB_State_ID ),
+  SEAF_send_authReq( )
+  ]->
+   [
+   St_4_SEAF( ~SEAF_State_ID, SNID, SUCI, ARPF, AUSF, RAND, HXRES_star,
+              $gNB, ~gNB_State_ID, UE_sec_capabilities
+   ),
+   F_SndS( <'gNB_seaf', 'SEAF', 'gNB'>, SNID, $gNB,
+           <'air', <RAND, AUTN>, ~gNB_State_ID>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) gnb_receive_authReq[color=#edc080]:
+   [
+   St_1_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB ),
+   F_RcvS( <'gNB_seaf', 'SEAF', 'gNB'>, SNID, $gNB,
+           <'air', <RAND, SQN, MAC>, ~gNB_State_ID>
+   )
+   ]
+  --[
+  Out_Src( RAND, <SQN, MAC> ), AuthReq_RAND_source( RAND ),
+  AuthReq_AUTN_source( <SQN, MAC> ), GNB_receive_authReq( )
+  ]->
+   [
+   St_2_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, <SQN, MAC> ),
+   Out( <RAND, SQN, MAC> )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ue_receive_authReq:
+   [
+   St_1_USIM( ~SUPI, ARPF, K, $gNB, k_ECIES, UE_sec_capabilities, SNID ),
+   UESQN( ~SUPI, ARPF, SQNMAX ), !AUSF( AUSF, ARPF ),
+   In( <RAND, SQN, f1(K, <SQN, RAND>)> ), In( UE_sec_capabilities ),
+   In( SNID )
+   ]
+  --[
+  UE_receive_authReq( ), LessThan( SQNMAX, SQN ),
+  Sqn_Ue_Use( ~SUPI, ARPF, SQN ),
+  Running( ~SUPI, <~SUPI, SNID, AUSF, ARPF>,
+           KDFA(KDFA(<f3(K, RAND), f4(K, RAND)>, <SNID, SQN>), SNID),
+           <'SUPI', 'K_SEAF'>
+  ),
+  Honest( <~SUPI, ARPF> ), Honest( SNID )
+  ]->
+   [
+   St_2_UE( ~SUPI, ARPF, K, $gNB, k_ECIES, RAND, SNID, AUSF, SQN,
+            UE_sec_capabilities
+   ),
+   UESQN( ~SUPI, ARPF, SQN )
+   ]
+
+  // loop breaker: [1]
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ue_send_authResp:
+   [
+   St_2_UE( ~SUPI, ARPF, K, $gNB, k_ECIES, RAND, SNID, AUSF, SQN,
+            UE_sec_capabilities
+   ),
+   In( UE_sec_capabilities ), !UE_NF_Setup( ~SUPI, ~NF, beta_SUPI )
+   ]
+  --[
+  UE_END( ),
+  Secret1( <~SUPI, SNID, AUSF, ARPF>, <'UE', ~SUPI>,
+           KDFA(KDFA(<f3(K, RAND), f4(K, RAND)>, <SNID, SQN>), SNID)
+  ),
+  Commit( ~SUPI, <~SUPI, SNID, AUSF, ARPF>,
+          KDFA(KDFA(<f3(K, RAND), f4(K, RAND)>, <SNID, SQN>), SNID),
+          <'SUPI', 'K_SEAF'>
+  ),
+  Honest( <~SUPI, ARPF> ), Honest( SNID ),
+  Out_RES_star( FX(<f3(K, RAND), f4(K, RAND), f2(K, RAND), RAND>, SNID) ),
+  Running( ~SUPI, <~SUPI, SNID, AUSF, ARPF>,
+           KDFA(KDFA(KDFA(KDFA(<f3(K, RAND), f4(K, RAND)>, <SNID, SQN>), SNID),
+                     <~SUPI, '5G_security_features'>),
+                '0'),
+           <'SUPI', 'K_gNB'>
+  )
+  ]->
+   [
+   Out( <FX(<f3(K, RAND), f4(K, RAND), f2(K, RAND), RAND>, SNID), 
+         sign(<FX(<f3(K, RAND), f4(K, RAND), f2(K, RAND), RAND>, SNID), $gNB, 
+               k_ECIES, $t>,
+              ~NF), 
+         $t>
+   ),
+   St_3_UE( ~SUPI, ARPF, K, RAND, SNID, AUSF, SQN,
+            KDFA(<f3(K, RAND), f4(K, RAND)>, <SNID, SQN>),
+            KDFA(KDFA(<f3(K, RAND), f4(K, RAND)>, <SNID, SQN>), SNID),
+            UE_sec_capabilities
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) gnb_receive_authResp[color=#edc080]:
+   [
+   St_2_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN ),
+   In( <RES_star, sig_NF, $t> )
+   ]
+  --[ GNB_State_ID_use( ~gNB_State_ID ) ]->
+   [
+   St_3_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN ),
+   F_SndS( <'gNB_seaf', 'gNB', 'SEAF'>, $gNB, SNID,
+           <'attach', <RES_star, sig_NF, $t>, ~gNB_State_ID>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) seaf_receive_authResp[color=#0037ff]:
+   [
+   St_4_SEAF( ~SEAF_State_ID, SNID, SUCI, ARPF, AUSF, RAND,
+              SHA256(RES_star, RAND), $gNB, ~gNB_State_ID, UE_sec_capabilities
+   ),
+   In( UE_sec_capabilities ),
+   F_RcvS( <'gNB_seaf', 'gNB', 'SEAF'>, $gNB, SNID,
+           <'attach', <RES_star, sig_NF, $t>, ~gNB_State_ID>
+   )
+   ]
+  --[ GNB_State_ID_use( ~gNB_State_ID ) ]->
+   [
+   St_5_SEAF( ~SEAF_State_ID, SNID, SUCI, ARPF, AUSF, RAND, RES_star, $gNB,
+              ~gNB_State_ID, UE_sec_capabilities, sig_NF, $t
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) seaf_send_ac[color=#0037ff]:
+   [
+   In( UE_sec_capabilities ),
+   St_5_SEAF( ~SEAF_State_ID, SNID, SUCI, ARPF, AUSF, RAND, RES_star, $gNB,
+              ~gNB_State_ID, UE_sec_capabilities, sig_NF, $t
+   )
+   ]
+  --[ SEAF_END( ), Honest( SNID ), In_RES_star( RES_star ) ]->
+   [
+   F_SndS( <'seaf_ausf', 'SEAF', 'AUSF'>, SNID, AUSF,
+           <'ac', RES_star, sig_NF, $t, $gNB>
+   ),
+   St_6_SEAF( ~SEAF_State_ID, SNID, SUCI, ARPF, AUSF, RAND, RES_star, $gNB,
+              ~gNB_State_ID, UE_sec_capabilities, RES_star, sig_NF, $t
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ausf_receive_ac_send_aca:
+   [
+   St_4_AUSF( ~AUSF_State_ID, SNID, SUCI, ARPF, AUSF, XRES_star, K_SEAF,
+              RAND, SEAF_State_ID, ~SUPI, k_ECIES, <$t2, sig_setup, pk_NF>
+   ),
+   F_RcvS( <'seaf_ausf', 'SEAF', 'AUSF'>, SNID, AUSF,
+           <'ac', RES_star, sig_NF, $t, $gNB>
+   ),
+   In( SNID )
+   ]
+  --[
+  HSS_END( ), Secret1( <~SUPI, SNID, AUSF, ARPF>, <'AUSF', AUSF>, K_SEAF ),
+  Commit( AUSF, <~SUPI, SNID, AUSF, ARPF>, K_SEAF, <'AUSF', 'K_SEAF'> ),
+  Honest( <~SUPI, ARPF> ), Honest( SNID ),
+  Eq( verify(sig_NF, <RES_star, $gNB, k_ECIES, $t>, pk_NF), true )
+  ]->
+   [
+   F_SndS( <'seaf_ausf', 'AUSF', 'SEAF'>, AUSF, SNID,
+           <'confirm', <~SUPI, K_SEAF, k_ECIES, $t2, sig_setup, pk_NF>, 
+            SEAF_State_ID>
+   )
+   ]
+
+  /*
+  rule (modulo AC) ausf_receive_ac_send_aca:
+     [
+     St_4_AUSF( ~AUSF_State_ID, SNID, SUCI, ARPF, AUSF, XRES_star, K_SEAF,
+                RAND, SEAF_State_ID, ~SUPI, k_ECIES, <$t2, sig_setup, pk_NF>
+     ),
+     F_RcvS( <'seaf_ausf', 'SEAF', 'AUSF'>, SNID, AUSF,
+             <'ac', RES_star, sig_NF, $t, $gNB>
+     ),
+     In( SNID )
+     ]
+    --[
+    HSS_END( ), Secret1( <~SUPI, SNID, AUSF, ARPF>, <'AUSF', AUSF>, K_SEAF ),
+    Commit( AUSF, <~SUPI, SNID, AUSF, ARPF>, K_SEAF, <'AUSF', 'K_SEAF'> ),
+    Honest( <~SUPI, ARPF> ), Honest( SNID ), Eq( z, true )
+    ]->
+     [
+     F_SndS( <'seaf_ausf', 'AUSF', 'SEAF'>, AUSF, SNID,
+             <'confirm', <~SUPI, K_SEAF, k_ECIES, $t2, sig_setup, pk_NF>, 
+              SEAF_State_ID>
+     )
+     ]
+    variants (modulo AC)
+    1. $gNB  = $gNB.43
+       $t    = $t.44
+       RES_star
+             = RES_star.52
+       k_ECIES
+             = k_ECIES.57
+       pk_NF = pk_NF.58
+       sig_NF
+             = sig_NF.59
+       z     = verify(sig_NF.59, <RES_star.52, $gNB.43, k_ECIES.57, $t.44>,
+                      pk_NF.58)
+    
+    2. $gNB  = $gNB.167
+       $t    = $t.168
+       RES_star
+             = RES_star.176
+       k_ECIES
+             = k_ECIES.181
+       pk_NF = pk(x.332)
+       sig_NF
+             = sign(<RES_star.176, $gNB.167, k_ECIES.181, $t.168>, x.332)
+       z     = true
+  */
+
+rule (modulo E) seaf_recv_aca_send_nas_SMCommand[color=#0037ff]:
+   [
+   St_6_SEAF( ~SEAF_State_ID, SNID, SUCI, ARPF, AUSF, RAND, RES_star, $gNB,
+              ~gNB_State_ID, UE_sec_capabilities, RES_star, sig_NF, $t
+   ),
+   F_RcvS( <'seaf_ausf', 'AUSF', 'SEAF'>, AUSF, SNID,
+           <'confirm', <~SUPI, K_SEAF, k_ECIES, $t2, sig_setup, pk_NF>, 
+            ~SEAF_State_ID>
+   ),
+   In( UE_sec_capabilities ), In( SNID ), !ARPF( ARPF, pk_HN ),
+   In( RES_star )
+   ]
+  --[
+  Out_SMC( <
+            <<'NAS_key_set_identifier_IEI', '0', $NAS_ksi>, UE_sec_capabilities, 
+             'NEAx', 'NIAx', '0', '5G_security_features', '1'>, 
+            NIA(KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASint'),
+                <<'NAS_key_set_identifier_IEI', '0', $NAS_ksi>, UE_sec_capabilities, 
+                 'NEAx', 'NIAx', '0', '5G_security_features', '1'>)
+           >
+  ),
+  GNB_State_ID_use( ~gNB_State_ID ),
+  Eq( verify(sig_setup, <$t2, ~SUPI, pk_NF>, pk_HN), true ),
+  Eq( verify(sig_NF, <RES_star, $gNB, k_ECIES, $t>, pk_NF), true ),
+  POI_CTX_SEAF( <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, 
+                 sig_NF, $t, $gNB>
+  ),
+  Out_MAC( NIA(KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>),
+                    'NASint'),
+               <<'NAS_key_set_identifier_IEI', '0', $NAS_ksi>, UE_sec_capabilities, 
+                'NEAx', 'NIAx', '0', '5G_security_features', '1'>)
+  ),
+  Secret1( <~SUPI, SNID, AUSF, ARPF>, <'K_SEAF', SNID>, K_SEAF ),
+  Secret1( <~SUPI, SNID, AUSF, ARPF>, <'K_AMF', SNID>,
+           KDFA(K_SEAF, <~SUPI, '5G_security_features'>)
+  ),
+  Honest( <~SUPI, ARPF> ), Honest( SNID )
+  ]->
+   [
+   St_7_SEAF( ~SEAF_State_ID, SNID, ~SUPI, ARPF, AUSF, RAND, RES_star,
+              K_SEAF, KDFA(K_SEAF, <~SUPI, '5G_security_features'>), $gNB,
+              ~gNB_State_ID, UE_sec_capabilities,
+              <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, sig_NF, $t, $gNB>
+   ),
+   F_SndS( <'gNB_seaf', 'SEAF', 'gNB'>, SNID, $gNB,
+           <'SMCommand', 
+            <
+             <<'NAS_key_set_identifier_IEI', '0', $NAS_ksi>, UE_sec_capabilities, 
+              'NEAx', 'NIAx', '0', '5G_security_features', '1'>, 
+             NIA(KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASint'),
+                 <<'NAS_key_set_identifier_IEI', '0', $NAS_ksi>, UE_sec_capabilities, 
+                  'NEAx', 'NIAx', '0', '5G_security_features', '1'>)
+            >, 
+            ~gNB_State_ID>
+   )
+   ]
+
+  /*
+  rule (modulo AC) seaf_recv_aca_send_nas_SMCommand[color=#0037ff]:
+     [
+     St_6_SEAF( ~SEAF_State_ID, SNID, SUCI, ARPF, AUSF, RAND, RES_star, $gNB,
+                ~gNB_State_ID, UE_sec_capabilities, RES_star, sig_NF, $t
+     ),
+     F_RcvS( <'seaf_ausf', 'AUSF', 'SEAF'>, AUSF, SNID,
+             <'confirm', <~SUPI, K_SEAF, k_ECIES, $t2, sig_setup, pk_NF>, 
+              ~SEAF_State_ID>
+     ),
+     In( UE_sec_capabilities ), In( SNID ), !ARPF( ARPF, pk_HN ),
+     In( RES_star )
+     ]
+    --[
+    Out_SMC( <
+              <<'NAS_key_set_identifier_IEI', '0', $NAS_ksi>, UE_sec_capabilities, 
+               'NEAx', 'NIAx', '0', '5G_security_features', '1'>, 
+              NIA(KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASint'),
+                  <<'NAS_key_set_identifier_IEI', '0', $NAS_ksi>, UE_sec_capabilities, 
+                   'NEAx', 'NIAx', '0', '5G_security_features', '1'>)
+             >
+    ),
+    GNB_State_ID_use( ~gNB_State_ID ), Eq( z, true ), Eq( z.1, true ),
+    POI_CTX_SEAF( <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, 
+                   sig_NF, $t, $gNB>
+    ),
+    Out_MAC( NIA(KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>),
+                      'NASint'),
+                 <<'NAS_key_set_identifier_IEI', '0', $NAS_ksi>, UE_sec_capabilities, 
+                  'NEAx', 'NIAx', '0', '5G_security_features', '1'>)
+    ),
+    Secret1( <~SUPI, SNID, AUSF, ARPF>, <'K_SEAF', SNID>, K_SEAF ),
+    Secret1( <~SUPI, SNID, AUSF, ARPF>, <'K_AMF', SNID>,
+             KDFA(K_SEAF, <~SUPI, '5G_security_features'>)
+    ),
+    Honest( <~SUPI, ARPF> ), Honest( SNID )
+    ]->
+     [
+     St_7_SEAF( ~SEAF_State_ID, SNID, ~SUPI, ARPF, AUSF, RAND, RES_star,
+                K_SEAF, KDFA(K_SEAF, <~SUPI, '5G_security_features'>), $gNB,
+                ~gNB_State_ID, UE_sec_capabilities,
+                <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, sig_NF, $t, $gNB>
+     ),
+     F_SndS( <'gNB_seaf', 'SEAF', 'gNB'>, SNID, $gNB,
+             <'SMCommand', 
+              <
+               <<'NAS_key_set_identifier_IEI', '0', $NAS_ksi>, UE_sec_capabilities, 
+                'NEAx', 'NIAx', '0', '5G_security_features', '1'>, 
+               NIA(KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASint'),
+                   <<'NAS_key_set_identifier_IEI', '0', $NAS_ksi>, UE_sec_capabilities, 
+                    'NEAx', 'NIAx', '0', '5G_security_features', '1'>)
+              >, 
+              ~gNB_State_ID>
+     )
+     ]
+    variants (modulo AC)
+    1. $gNB  = $gNB.56
+       $t    = $t.57
+       $t2   = $t2.58
+       ~SUPI = ~SUPI.60
+       RES_star
+             = RES_star.66
+       k_ECIES
+             = k_ECIES.70
+       pk_HN = pk_HN.71
+       pk_NF = pk_NF.72
+       sig_NF
+             = sig_NF.73
+       sig_setup
+             = sig_setup.74
+       z     = verify(sig_setup.74, <$t2.58, ~SUPI.60, pk_NF.72>, pk_HN.71)
+       z.1   = verify(sig_NF.73, <RES_star.66, $gNB.56, k_ECIES.70, $t.57>,
+                      pk_NF.72)
+    
+    2. $gNB  = $gNB.606
+       $t    = $t.607
+       $t2   = $t2.608
+       ~SUPI = ~SUPI.610
+       RES_star
+             = RES_star.616
+       k_ECIES
+             = k_ECIES.620
+       pk_HN = pk(x.1209)
+       pk_NF = pk_NF.622
+       sig_NF
+             = sig_NF.623
+       sig_setup
+             = sign(<$t2.608, ~SUPI.610, pk_NF.622>, x.1209)
+       z     = true
+       z.1   = verify(sig_NF.623, <RES_star.616, $gNB.606, k_ECIES.620, $t.607>,
+                      pk_NF.622)
+    
+    3. $gNB  = $gNB.609
+       $t    = $t.610
+       $t2   = $t2.611
+       ~SUPI = ~SUPI.613
+       RES_star
+             = RES_star.619
+       k_ECIES
+             = k_ECIES.623
+       pk_HN = pk_HN.624
+       pk_NF = pk(x.1215)
+       sig_NF
+             = sign(<RES_star.619, $gNB.609, k_ECIES.623, $t.610>, x.1215)
+       sig_setup
+             = sig_setup.627
+       z     = verify(sig_setup.627, <$t2.611, ~SUPI.613, pk(x.1215)>,
+                      pk_HN.624)
+       z.1   = true
+    
+    4. $gNB  = $gNB.609
+       $t    = $t.610
+       $t2   = $t2.611
+       ~SUPI = ~SUPI.613
+       RES_star
+             = RES_star.619
+       k_ECIES
+             = k_ECIES.623
+       pk_HN = pk(x.1214)
+       pk_NF = pk(x.1215)
+       sig_NF
+             = sign(<RES_star.619, $gNB.609, k_ECIES.623, $t.610>, x.1215)
+       sig_setup
+             = sign(<$t2.611, ~SUPI.613, pk(x.1215)>, x.1214)
+       z     = true
+       z.1   = true
+  */
+
+rule (modulo E) gnb_relay_nas_SMCommand[color=#edc080]:
+   [
+   St_3_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN ),
+   In( UE_sec_capabilities ),
+   In( <ngKSI, UE_sec_capabilities, Ciphering_Algorithm, 
+        Integrity_Algorithm, K_AMF_change_flag, ABBA, 
+        request_Initial_NAS_message_flag>
+   ),
+   F_RcvS( <'gNB_seaf', 'SEAF', 'gNB'>, SNID, $gNB,
+           <'SMCommand', 
+            <
+             <ngKSI, UE_sec_capabilities, Ciphering_Algorithm, Integrity_Algorithm, 
+              K_AMF_change_flag, ABBA, request_Initial_NAS_message_flag>, 
+             MAC>, 
+            ~gNB_State_ID>
+   )
+   ]
+  --[
+  In_SMC( <
+           <ngKSI, UE_sec_capabilities, Ciphering_Algorithm, Integrity_Algorithm, 
+            K_AMF_change_flag, ABBA, request_Initial_NAS_message_flag>, 
+           MAC>
+  ),
+  In_Sec_Cap( UE_sec_capabilities ), In_MAC( MAC )
+  ]->
+   [
+   St_4_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN ),
+   Out( <
+         <ngKSI, UE_sec_capabilities, Ciphering_Algorithm, Integrity_Algorithm, 
+          K_AMF_change_flag, ABBA, request_Initial_NAS_message_flag>, 
+         MAC>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ue_recv_nas_SMCommand_send_nas_SMComplete:
+   [
+   St_3_UE( ~SUPI, ARPF, K, RAND, SNID, AUSF, SQN, K_AUSF, K_SEAF,
+            UE_sec_capabilities
+   ),
+   In( UE_sec_capabilities ),
+   In( <
+        <ngKSI, UE_sec_capabilities, Ciphering_Algorithm, Integrity_Algorithm, 
+         K_AMF_change_flag, '5G_security_features', 
+         request_Initial_NAS_message_flag>, 
+        NIA(KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASint'),
+            <ngKSI, UE_sec_capabilities, Ciphering_Algorithm, Integrity_Algorithm, 
+             K_AMF_change_flag, '5G_security_features', 
+             request_Initial_NAS_message_flag>)
+       >
+   )
+   ]
+  --[
+  Out_Sec_Cap( UE_sec_capabilities ),
+  Out_NAS_SMComplete( senc(<<~SUPI, ARPF, UE_sec_capabilities>, 
+                            NIA(KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASint'),
+                                <~SUPI, ARPF, UE_sec_capabilities>)
+                           >,
+                           KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASenc'))
+  )
+  ]->
+   [
+   Out( senc(<<~SUPI, ARPF, UE_sec_capabilities>, 
+              NIA(KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASint'),
+                  <~SUPI, ARPF, UE_sec_capabilities>)
+             >,
+             KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASenc'))
+   ),
+   St_4_UE( ~SUPI, ARPF, K, RAND, SNID, AUSF, SQN, K_AUSF, K_SEAF, ngKSI,
+            KDFA(K_SEAF, <~SUPI, '5G_security_features'>),
+            KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASint'),
+            KDFA(KDFA(K_SEAF, <~SUPI, '5G_security_features'>), 'NASenc'),
+            UE_sec_capabilities
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) gnb_relay_nas_SMComplete[color=#edc080]:
+   [
+   St_4_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN ),
+   In( SMComplete )
+   ]
+  --[ In_NAS_SMComplete( SMComplete ), GNB_State_ID_use( ~gNB_State_ID )
+  ]->
+   [
+   F_SndS( <'gNB_seaf', 'gNB', 'SEAF'>, $gNB, SNID,
+           <'SMComplete', SMComplete, ~gNB_State_ID>
+   ),
+   St_5_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) seaf_recv_SMComplete[color=#0037ff]:
+   [
+   In( UE_sec_capabilities ),
+   St_7_SEAF( ~SEAF_State_ID, SNID, ~SUPI, ARPF, AUSF, RAND, RES_star,
+              K_SEAF, K_AMF, $gNB, ~gNB_State_ID, UE_sec_capabilities,
+              <~SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, $t, $gNB>
+   ),
+   F_RcvS( <'gNB_seaf', 'gNB', 'SEAF'>, $gNB, SNID,
+           <'SMComplete', 
+            senc(<<~SUPI, ARPF, UE_sec_capabilities>, 
+                  NIA(KDFA(K_AMF, 'NASint'), <~SUPI, ARPF, UE_sec_capabilities>)>,
+                 KDFA(K_AMF, 'NASenc')), 
+            ~gNB_State_ID>
+   ),
+   Fr( ~PDUsession ), Fr( ~seaf_UPF_ID ), In( RES_star )
+   ]
+  --[
+  Helper_kECIES( k_ECIES ), Rule_seaf_recv_SMComplete( ),
+  GNB_State_ID_use( ~gNB_State_ID ), UPF_State_ID_source( ~seaf_UPF_ID )
+  ]->
+   [
+   St_8_SEAF( ~SEAF_State_ID, SNID, ~SUPI, ARPF, AUSF, RAND, RES_star,
+              K_SEAF, K_AMF, KDFA(K_AMF, '0'), $gNB, ~gNB_State_ID, UE_sec_capabilities
+   ),
+   F_SndS( <'seaf_UPF', 'SEAF', 'UPF'>, SNID, $UPF,
+           <'INIT_PDU_SESSION', 
+            <~SUPI, ~PDUsession, ~SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, $t, 
+             $gNB>, 
+            ~seaf_UPF_ID>
+   ),
+   F_SndS( <'gNB_seaf', 'SEAF', 'gNB'>, SNID, $gNB,
+           <'INITIAL_CONTEXT_SETUP_REQUEST', 
+            <'INITIAL_CONTEXT_SETUP_REQUEST', KDFA(K_AMF, '0'), ~PDUsession, ~SUPI, 
+             beta_SUPI, RES_star, k_ECIES, sig_NF, $t, $gNB>, 
+            ~gNB_State_ID>
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) init_PDU_session_UPF:
+   [
+   F_RcvS( <'seaf_UPF', 'SEAF', 'UPF'>, SNID, $UPF,
+           <'INIT_PDU_SESSION', 
+            <~SUPI, ~PDUsession, ~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, 
+             sig_NF, $t, $gNB>, 
+            ~seaf_UPF_ID>
+   ),
+   !ARPF( ARPF, pk_HN ), In( RES_star )
+   ]
+  --[
+  UPF_State_ID_use( ~seaf_UPF_ID ),
+  Eq( verify(sig_setup, <$t2, ~SUPI, pk_NF>, pk_HN), true ),
+  Eq( verify(sig_NF, <RES_star, $gNB, k_ECIES, $t>, pk_NF), true ),
+  POI_CTX_UPF( <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, sig_NF, 
+                $t, $gNB>
+  )
+  ]->
+   [
+   St_1_UPF( <~SUPI, ~PDUsession, ~SUPI, <$t2, sig_setup, pk_NF>, RES_star, 
+              k_ECIES, sig_NF, $t, $gNB>
+   )
+   ]
+
+  /*
+  rule (modulo AC) init_PDU_session_UPF:
+     [
+     F_RcvS( <'seaf_UPF', 'SEAF', 'UPF'>, SNID, $UPF,
+             <'INIT_PDU_SESSION', 
+              <~SUPI, ~PDUsession, ~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, 
+               sig_NF, $t, $gNB>, 
+              ~seaf_UPF_ID>
+     ),
+     !ARPF( ARPF, pk_HN ), In( RES_star )
+     ]
+    --[
+    UPF_State_ID_use( ~seaf_UPF_ID ), Eq( z, true ), Eq( z.1, true ),
+    POI_CTX_UPF( <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, sig_NF, 
+                  $t, $gNB>
+    )
+    ]->
+     [
+     St_1_UPF( <~SUPI, ~PDUsession, ~SUPI, <$t2, sig_setup, pk_NF>, RES_star, 
+                k_ECIES, sig_NF, $t, $gNB>
+     )
+     ]
+    variants (modulo AC)
+    1. $gNB  = $gNB.36
+       $t    = $t.37
+       $t2   = $t2.38
+       ~SUPI = ~SUPI.40
+       RES_star
+             = RES_star.43
+       k_ECIES
+             = k_ECIES.45
+       pk_HN = pk_HN.46
+       pk_NF = pk_NF.47
+       sig_NF
+             = sig_NF.48
+       sig_setup
+             = sig_setup.49
+       z     = verify(sig_setup.49, <$t2.38, ~SUPI.40, pk_NF.47>, pk_HN.46)
+       z.1   = verify(sig_NF.48, <RES_star.43, $gNB.36, k_ECIES.45, $t.37>,
+                      pk_NF.47)
+    
+    2. $gNB  = $gNB.91
+       $t    = $t.92
+       $t2   = $t2.93
+       ~SUPI = ~SUPI.95
+       RES_star
+             = RES_star.98
+       k_ECIES
+             = k_ECIES.100
+       pk_HN = pk(x.179)
+       pk_NF = pk_NF.102
+       sig_NF
+             = sig_NF.103
+       sig_setup
+             = sign(<$t2.93, ~SUPI.95, pk_NF.102>, x.179)
+       z     = true
+       z.1   = verify(sig_NF.103, <RES_star.98, $gNB.91, k_ECIES.100, $t.92>,
+                      pk_NF.102)
+    
+    3. $gNB  = $gNB.94
+       $t    = $t.95
+       $t2   = $t2.96
+       ~SUPI = ~SUPI.98
+       RES_star
+             = RES_star.101
+       k_ECIES
+             = k_ECIES.103
+       pk_HN = pk_HN.104
+       pk_NF = pk(x.185)
+       sig_NF
+             = sign(<RES_star.101, $gNB.94, k_ECIES.103, $t.95>, x.185)
+       sig_setup
+             = sig_setup.107
+       z     = verify(sig_setup.107, <$t2.96, ~SUPI.98, pk(x.185)>, pk_HN.104)
+       z.1   = true
+    
+    4. $gNB  = $gNB.94
+       $t    = $t.95
+       $t2   = $t2.96
+       ~SUPI = ~SUPI.98
+       RES_star
+             = RES_star.101
+       k_ECIES
+             = k_ECIES.103
+       pk_HN = pk(x.184)
+       pk_NF = pk(x.185)
+       sig_NF
+             = sign(<RES_star.101, $gNB.94, k_ECIES.103, $t.95>, x.185)
+       sig_setup
+             = sign(<$t2.96, ~SUPI.98, pk(x.185)>, x.184)
+       z     = true
+       z.1   = true
+  */
+
+rule (modulo E) gnb_send_as_SMCommand[color=#edc080]:
+   [
+   St_5_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN ),
+   F_RcvS( <'gNB_seaf', 'SEAF', 'gNB'>, SNID, $gNB,
+           <'INITIAL_CONTEXT_SETUP_REQUEST', 
+            <'INITIAL_CONTEXT_SETUP_REQUEST', K_gNB, ~PDUsession, ~SUPI, 
+             <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, sig_NF, $t, $gNB>, 
+            ~gNB_State_ID>
+   ),
+   In( RES_star )
+   ]
+  -->
+   [
+   St_6_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN, K_gNB,
+             KDFA(K_gNB, 'N_RRC_int_alg'), KDFA(K_gNB, 'N_RRC_enc_alg'),
+             KDFA(K_gNB, 'N_UP_enc_alg'), KDFA(K_gNB, 'N_UP_int_alg'), ~PDUsession
+   ),
+   St_gNB_CTX_NF( <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, 
+                   sig_NF, $t, $gNB>
+   ),
+   Out( <'NEAx', 'NIAx', NIA(KDFA(K_gNB, 'N_RRC_int_alg'), <'NEAx', 'NIAx'>)
+        >
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ue_recv_as_SMCommand_send_as_SMComplete:
+   [
+   St_4_UE( ~SUPI, ARPF, K, RAND, SNID, AUSF, SQN, K_AUSF, K_SEAF, ngKSI,
+            K_AMF, K_NASint, K_NASenc, UE_sec_capabilities
+   ),
+   In( UE_sec_capabilities ),
+   In( <Ciphering_Algorithm, Integrity_Algorithm, 
+        NIA(KDFA(KDFA(K_AMF, '0'), 'N_RRC_int_alg'),
+            <Ciphering_Algorithm, Integrity_Algorithm>)
+       >
+   )
+   ]
+  --[
+  AS_SMComplete( ),
+  Secret1( <~SUPI, SNID, 'AUSF', ARPF>, <'KGNB', ARPF>, KDFA(K_AMF, '0') ),
+  Honest( <~SUPI, ARPF> )
+  ]->
+   [
+   Out( <'Secure_Command_Complete', 
+         NIA(KDFA(KDFA(K_AMF, '0'), 'N_RRC_int_alg'), 'Secure_Command_Complete')>
+   ),
+   St_5_UE( ~SUPI, ARPF, K, RAND, SNID, AUSF, SQN, K_AUSF, K_SEAF, ngKSI,
+            K_AMF, K_NASint, K_NASenc, UE_sec_capabilities, KDFA(K_AMF, '0'),
+            KDFA(KDFA(K_AMF, '0'), 'N_RRC_int_alg'),
+            KDFA(KDFA(K_AMF, '0'), 'N_RRC_enc_alg'),
+            KDFA(KDFA(K_AMF, '0'), 'N_UP_int_alg'),
+            KDFA(KDFA(K_AMF, '0'), 'N_UP_enc_alg')
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) gnb_recv_as_SMComplete[color=#edc080]:
+   [
+   St_6_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN, K_gNB,
+             K_RRCint, K_RRCenc, K_UPenc, K_UPint, ~PDUsession
+   ),
+   In( <'Secure_Command_Complete', NIA(K_RRCint, 'Secure_Command_Complete')>
+   )
+   ]
+  -->
+   [
+   St_7_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN, K_gNB,
+             K_RRCint, K_RRCenc, K_UPenc, K_UPint, ~PDUsession
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) ue_send_data:
+   [
+   St_5_UE( ~SUPI, ARPF, K, RAND, SNID, AUSF, SQN, K_AUSF, K_SEAF, ngKSI,
+            K_AMF, K_NASint, K_NASenc, UE_sec_capabilities, K_gNB, K_RRCint,
+            K_RRCenc, K_UPint, K_UPenc
+   ),
+   Fr( ~appData ), !UE_NF_Setup( ~SUPI, ~NF, beta_SUPI ),
+   In( UE_sec_capabilities )
+   ]
+  --[ UserSend( ~SUPI, <~appData, sign(~appData, ~NF)> ) ]->
+   [
+   Out( senc(<<~appData, sign(~appData, ~NF)>, NIA(K_UPint, ~appData)>,
+             K_UPenc)
+   )
+   ]
+
+  /* has exactly the trivial AC variant */
+
+rule (modulo E) gnb_recv_data:
+   [
+   St_7_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN, K_gNB,
+             K_RRCint, K_RRCenc, K_UPenc, K_UPint, ~PDUsession
+   ),
+   In( senc(<<~appData, sigApp>, NIA(K_UPint, ~appData)>, K_UPenc) ),
+   In( RES_star ),
+   St_gNB_CTX_NF( <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, 
+                   sig_NF, $t, $gNB>
+   )
+   ]
+  --[
+  UPF_GNB_State_ID_source( ~PDUsession ),
+  Eq( verify(sigApp, ~appData, pk_NF), true )
+  ]->
+   [
+   F_SndS( <'gNB_UPF', 'gNB', 'UPF'>, $gNB, ~PDUsession,
+           <'UP', <~appData, sigApp>, ~PDUsession>
+   )
+   ]
+
+  /*
+  rule (modulo AC) gnb_recv_data:
+     [
+     St_7_gNB( ~gNB_State_ID, SNID, SUCI, ARPF, $gNB, RAND, AUTN, K_gNB,
+               K_RRCint, K_RRCenc, K_UPenc, K_UPint, ~PDUsession
+     ),
+     In( senc(<<~appData, sigApp>, NIA(K_UPint, ~appData)>, K_UPenc) ),
+     In( RES_star ),
+     St_gNB_CTX_NF( <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, 
+                     sig_NF, $t, $gNB>
+     )
+     ]
+    --[ UPF_GNB_State_ID_source( ~PDUsession ), Eq( z, true ) ]->
+     [
+     F_SndS( <'gNB_UPF', 'gNB', 'UPF'>, $gNB, ~PDUsession,
+             <'UP', <~appData, sigApp>, ~PDUsession>
+     )
+     ]
+    variants (modulo AC)
+    1. ~appData
+             = ~appData.45
+       pk_NF = pk_NF.59
+       sigApp
+             = sigApp.60
+       z     = verify(sigApp.60, ~appData.45, pk_NF.59)
+    
+    2. ~appData
+             = ~appData.113
+       pk_NF = pk(x.219)
+       sigApp
+             = sign(~appData.113, x.219)
+       z     = true
+  */
+
+rule (modulo E) upf_rcv_data:
+   [
+   St_1_UPF( <~SUPI, ~PDUsession, ~SUPI, <$t2, sig_setup, pk_NF>, RES_star, 
+              k_ECIES, sig_NF, $t, $gNB>
+   ),
+   F_RcvS( <'gNB_UPF', 'gNB', 'UPF'>, $gNB, ~PDUsession,
+           <'UP', <~appData, sigApp>, ~PDUsession>
+   ),
+   In( RES_star )
+   ]
+  --[
+  POI_UPF( <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, sig_NF, $t, 
+            $gNB>,
+           <~appData, sigApp>
+  ),
+  Eq( verify(sigApp, ~appData, pk_NF), true ), UPF_recv_data( ),
+  UPF_GNB_State_ID_use( ~PDUsession )
+  ]->
+   [ ]
+
+  /*
+  rule (modulo AC) upf_rcv_data:
+     [
+     St_1_UPF( <~SUPI, ~PDUsession, ~SUPI, <$t2, sig_setup, pk_NF>, RES_star, 
+                k_ECIES, sig_NF, $t, $gNB>
+     ),
+     F_RcvS( <'gNB_UPF', 'gNB', 'UPF'>, $gNB, ~PDUsession,
+             <'UP', <~appData, sigApp>, ~PDUsession>
+     ),
+     In( RES_star )
+     ]
+    --[
+    POI_UPF( <~SUPI, <$t2, sig_setup, pk_NF>, RES_star, k_ECIES, sig_NF, $t, 
+              $gNB>,
+             <~appData, sigApp>
+    ),
+    Eq( z, true ), UPF_recv_data( ), UPF_GNB_State_ID_use( ~PDUsession )
+    ]->
+     [ ]
+    variants (modulo AC)
+    1. ~appData
+             = ~appData.23
+       pk_NF = pk_NF.26
+       sigApp
+             = sigApp.27
+       z     = verify(sigApp.27, ~appData.23, pk_NF.26)
+    
+    2. ~appData
+             = ~appData.58
+       pk_NF = pk(x.109)
+       sigApp
+             = sign(~appData.58, x.109)
+       z     = true
+  */
+
+restriction ARPF_HomeNet_once:
+  "∀ ARPF #i #j.
+    ((ARPF_HomeNet( ARPF ) @ #i) ∧ (ARPF_HomeNet( ARPF ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+restriction AUSF_HomeNet_once_link:
+  "∀ AUSF ARPF ARPF1 #i #j.
+    ((AUSF_HomeNet( AUSF, ARPF ) @ #i) ∧
+     (AUSF_HomeNet( AUSF, ARPF1 ) @ #j)) ⇒
+    (#i = #j)"
+  // safety formula
+
+restriction Subscribe_once:
+  "∀ ARPF ARPF1 SUPI #i #j.
+    ((Subscribe( SUPI, ARPF ) @ #i) ∧ (Subscribe( SUPI, ARPF1 ) @ #j)) ⇒
+    (#i = #j)"
+  // safety formula
+
+restriction ServNet_once:
+  "∀ VPLMNID #i #j.
+    ((ServNet( VPLMNID ) @ #i) ∧ (ServNet( VPLMNID ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+restriction gNB_once:
+  "∀ gNB #i #j.
+    ((GNB_init( gNB ) @ #i) ∧ (GNB_init( gNB ) @ #j)) ⇒ (#i = #j)"
+  // safety formula
+
+restriction Equality:
+  "∀ x y #i. (Eq( x, y ) @ #i) ⇒ (x = y)"
+  // safety formula
+
+restriction setup_once:
+  "∀ ARPF ARPF2 SUPI pk_NF pk_NF2 #i #j.
+    ((HN_recv_setup_req_send_res( ARPF, SUPI, pk_NF ) @ #i) ∧
+     (HN_recv_setup_req_send_res( ARPF2, SUPI, pk_NF2 ) @ #j)) ⇒
+    (#i = #j)"
+  // safety formula
+
+restriction setup_req_once:
+  "∀ SUPI ARPF ARPF1 NF NF1 #i #j.
+    ((UE_setup_send_req( SUPI, ARPF, NF ) @ #i) ∧
+     (UE_setup_send_req( SUPI, ARPF1, NF1 ) @ #j)) ⇒
+    (#i = #j)"
+  // safety formula
+
+restriction LessThan:
+  "∀ x y #i. (LessThan( x, y ) @ #i) ⇒ (∃ z. (x+z) = y)"
+
+lemma mac_sources [sources]:
+  all-traces
+  "∀ MAC #i.
+    (In_MAC( MAC ) @ #i) ⇒
+    ((∃ #j. (Out_MAC( MAC ) @ #j) ∧ (#j < #i)) ∨
+     (∃ #k. (!KU( MAC ) @ #k) ∧ (#k < #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ MAC #i.
+  (In_MAC( MAC ) @ #i)
+ ∧
+  (∀ #j. (Out_MAC( MAC ) @ #j) ⇒ ¬(#j < #i)) ∧
+  (∀ #k. (!KU( MAC ) @ #k) ⇒ ¬(#k < #i))"
+*/
+by sorry
+
+lemma 5G_HE_AV_sources [sources]:
+  all-traces
+  "∀ 5G_HE_AV #i.
+    (In_AIResp( 5G_HE_AV ) @ #i) ⇒
+    ((∃ #j. (!KU( 5G_HE_AV ) @ #j) ∧ (#j < #i)) ∨
+     (∃ #j. (Out_AIResp( 5G_HE_AV ) @ #j) ∧ (#j < #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ 5G_HE_AV #i.
+  (In_AIResp( 5G_HE_AV ) @ #i)
+ ∧
+  (∀ #j. (!KU( 5G_HE_AV ) @ #j) ⇒ ¬(#j < #i)) ∧
+  (∀ #j. (Out_AIResp( 5G_HE_AV ) @ #j) ⇒ ¬(#j < #i))"
+*/
+by sorry
+
+lemma UE_sec_capabilities_attach_sources [sources]:
+  all-traces
+  "∀ UE_sec_capabilities #i.
+    (In_Attach_UE_sec_capabilities( UE_sec_capabilities ) @ #i) ⇒
+    ((∃ #j. (!KU( UE_sec_capabilities ) @ #j) ∧ (#j < #i)) ∨
+     (∃ #j.
+       (Out_Attach_UE_sec_capabilities( UE_sec_capabilities ) @ #j) ∧
+       (#j < #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ UE_sec_capabilities #i.
+  (In_Attach_UE_sec_capabilities( UE_sec_capabilities ) @ #i)
+ ∧
+  (∀ #j. (!KU( UE_sec_capabilities ) @ #j) ⇒ ¬(#j < #i)) ∧
+  (∀ #j.
+    (Out_Attach_UE_sec_capabilities( UE_sec_capabilities ) @ #j)
+   ⇒
+    ¬(#j < #i))"
+*/
+by sorry
+
+lemma RES_star_sources [sources]:
+  all-traces
+  "∀ RES_star #i.
+    (In_RES_star( RES_star ) @ #i) ⇒
+    ((∃ #j. (!KU( RES_star ) @ #j) ∧ (#j < #i)) ∨
+     (∃ #j. (Out_RES_star( RES_star ) @ #j) ∧ (#j < #i)))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ RES_star #i.
+  (In_RES_star( RES_star ) @ #i)
+ ∧
+  (∀ #j. (!KU( RES_star ) @ #j) ⇒ ¬(#j < #i)) ∧
+  (∀ #j. (Out_RES_star( RES_star ) @ #j) ⇒ ¬(#j < #i))"
+*/
+by sorry
+
+lemma secrecy_NF [reuse]:
+  all-traces
+  "∀ NF #i.
+    (Secret_NF( NF ) @ #i) ⇒
+    ((¬(∃ #k. !KU( NF ) @ #k)) ∨ (∃ SUPI #r. Rev( <'NF', SUPI, NF> ) @ #r))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ NF #i.
+  (Secret_NF( NF ) @ #i)
+ ∧
+  (∃ #k. (!KU( NF ) @ #k)) ∧
+  (∀ SUPI #r. (Rev( <'NF', SUPI, NF> ) @ #r) ⇒ ⊥)"
+*/
+by sorry
+
+lemma secrecy_HN [reuse]:
+  all-traces
+  "∀ ARPF HN #i.
+    (Secret_HN( ARPF, HN ) @ #i) ⇒
+    ((¬(∃ #k. !KU( HN ) @ #k)) ∨ (∃ #r. Rev( <'HN', ARPF, HN> ) @ #r))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ ARPF HN #i.
+  (Secret_HN( ARPF, HN ) @ #i)
+ ∧
+  (∃ #k. (!KU( HN ) @ #k)) ∧ (∀ #r. (Rev( <'HN', ARPF, HN> ) @ #r) ⇒ ⊥)"
+*/
+by sorry
+
+lemma trace_exists:
+  exists-trace
+  "∃ #i.
+    ((((((((HSS_END( ) @ #i) ∧ (¬(∃ X #r. Rev( X ) @ #r))) ∧
+          (∀ ARPF1 ARPF2 #j #k.
+            ((ARPF_HomeNet( ARPF1 ) @ #j) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+            (#j = #k))) ∧
+         (∀ S1 S2 ARPF1 ARPF2 #j #k.
+           ((Subscribe( S1, ARPF1 ) @ #j) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+           (#j = #k))) ∧
+        (∀ SQN1 c1 SQN2 c2 #j #k.
+          ((Sqn_ARPF_Use( SQN1, c1 ) @ #j) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+          (#j = #k))) ∧
+       (∀ AUSF AUSF2 #j #k.
+         ((StartAUSFSession( AUSF ) @ #j) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+         (#j = #k))) ∧
+      (∀ AUSF AUSF2 #j #k.
+        ((AUSF_ID( AUSF ) @ #j) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j = #k))) ∧
+     (∀ SNID1 SNID2 #j #k.
+       ((StartSeafSession( SNID1 ) @ #j) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+       (#j = #k))) ∧
+    (∀ ARPF1 ARPF2 #j #k.
+      ((StartARPFSession( ARPF1 ) @ #j) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+      (#j = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #i.
+  (HSS_END( ) @ #i)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j) ∧ (ARPF_HomeNet( ARPF2 ) @ #k) ⇒ #j = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j #k.
+    (Subscribe( S1, ARPF1 ) @ #j) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j = #k) ∧
+  (∀ AUSF AUSF2 #j #k.
+    (StartAUSFSession( AUSF ) @ #j) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j = #k) ∧
+  (∀ AUSF AUSF2 #j #k.
+    (AUSF_ID( AUSF ) @ #j) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j = #k) ∧
+  (∀ SNID1 SNID2 #j #k.
+    (StartSeafSession( SNID1 ) @ #j) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j = #k) ∧
+  (∀ ARPF1 ARPF2 #j #k.
+    (StartARPFSession( ARPF1 ) @ #j) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j = #k)"
+*/
+by sorry
+
+lemma trace_exists_NAS_SMC:
+  exists-trace
+  "∃ #j.
+    ((((((((Rule_seaf_recv_SMComplete( ) @ #j) ∧
+           (¬(∃ X #r. Rev( X ) @ #r))) ∧
+          (∀ ARPF1 ARPF2 #j.1 #k.
+            ((ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+            (#j.1 = #k))) ∧
+         (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+           ((Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+           (#j.1 = #k))) ∧
+        (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+          ((Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+          (#j.1 = #k))) ∧
+       (∀ AUSF AUSF2 #j.1 #k.
+         ((StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+         (#j.1 = #k))) ∧
+      (∀ AUSF AUSF2 #j.1 #k.
+        ((AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+     (∀ SNID1 SNID2 #j.1 #k.
+       ((StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+       (#j.1 = #k))) ∧
+    (∀ ARPF1 ARPF2 #j.1 #k.
+      ((StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+      (#j.1 = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #j.
+  (Rule_seaf_recv_SMComplete( ) @ #j)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+    (Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SNID1 SNID2 #j.1 #k.
+    (StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k)"
+*/
+by sorry
+
+lemma trace_exists_AS_SMComplete:
+  exists-trace
+  "∃ #j.
+    ((((((((((AS_SMComplete( ) @ #j) ∧ (¬(∃ X #r. Rev( X ) @ #r))) ∧
+            (∀ ARPF1 ARPF2 #j.1 #k.
+              ((ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+              (#j.1 = #k))) ∧
+           (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+             ((Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+             (#j.1 = #k))) ∧
+          (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+            ((Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+            (#j.1 = #k))) ∧
+         (∀ AUSF AUSF2 #j.1 #k.
+           ((StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+           (#j.1 = #k))) ∧
+        (∀ AUSF AUSF2 #j.1 #k.
+          ((AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+       (∀ SNID1 SNID2 #j.1 #k.
+         ((StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+         (#j.1 = #k))) ∧
+      (∀ ARPF1 ARPF2 #j.1 #k.
+        ((StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+        (#j.1 = #k))) ∧
+     (∀ gNB1 gNB2 #j.1 #k.
+       ((GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+    (∀ SUPI1 SUPI2 #j.1 #k.
+      ((In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+      (#j.1 = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #j.
+  (AS_SMComplete( ) @ #j)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+    (Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SNID1 SNID2 #j.1 #k.
+    (StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ gNB1 gNB2 #j.1 #k.
+    (GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SUPI1 SUPI2 #j.1 #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j.1 = #k)"
+*/
+by sorry
+
+lemma trace_exists_setup:
+  exists-trace
+  "∃ SUPI ARPF NF #j.
+    ((((((((((UE_recv_setup_res( SUPI, ARPF, NF ) @ #j) ∧
+             (¬(∃ X #r. Rev( X ) @ #r))) ∧
+            (∀ ARPF1 ARPF2 #j.1 #k.
+              ((ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+              (#j.1 = #k))) ∧
+           (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+             ((Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+             (#j.1 = #k))) ∧
+          (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+            ((Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+            (#j.1 = #k))) ∧
+         (∀ AUSF AUSF2 #j.1 #k.
+           ((StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+           (#j.1 = #k))) ∧
+        (∀ AUSF AUSF2 #j.1 #k.
+          ((AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+       (∀ SNID1 SNID2 #j.1 #k.
+         ((StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+         (#j.1 = #k))) ∧
+      (∀ ARPF1 ARPF2 #j.1 #k.
+        ((StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+        (#j.1 = #k))) ∧
+     (∀ gNB1 gNB2 #j.1 #k.
+       ((GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+    (∀ SUPI1 SUPI2 #j.1 #k.
+      ((In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+      (#j.1 = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ SUPI ARPF NF #j.
+  (UE_recv_setup_res( SUPI, ARPF, NF ) @ #j)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+    (Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SNID1 SNID2 #j.1 #k.
+    (StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ gNB1 gNB2 #j.1 #k.
+    (GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SUPI1 SUPI2 #j.1 #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j.1 = #k)"
+*/
+by sorry
+
+lemma trace_exists_seaf_end:
+  exists-trace
+  "∃ #j.
+    ((((((((((SEAF_END( ) @ #j) ∧ (¬(∃ X #r. Rev( X ) @ #r))) ∧
+            (∀ ARPF1 ARPF2 #j.1 #k.
+              ((ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+              (#j.1 = #k))) ∧
+           (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+             ((Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+             (#j.1 = #k))) ∧
+          (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+            ((Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+            (#j.1 = #k))) ∧
+         (∀ AUSF AUSF2 #j.1 #k.
+           ((StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+           (#j.1 = #k))) ∧
+        (∀ AUSF AUSF2 #j.1 #k.
+          ((AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+       (∀ SNID1 SNID2 #j.1 #k.
+         ((StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+         (#j.1 = #k))) ∧
+      (∀ ARPF1 ARPF2 #j.1 #k.
+        ((StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+        (#j.1 = #k))) ∧
+     (∀ gNB1 gNB2 #j.1 #k.
+       ((GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+    (∀ SUPI1 SUPI2 #j.1 #k.
+      ((In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+      (#j.1 = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #j.
+  (SEAF_END( ) @ #j)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+    (Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SNID1 SNID2 #j.1 #k.
+    (StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ gNB1 gNB2 #j.1 #k.
+    (GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SUPI1 SUPI2 #j.1 #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j.1 = #k)"
+*/
+by sorry
+
+lemma trace_exists_SEAF_send_authReq:
+  exists-trace
+  "∃ #j.
+    ((((((((((SEAF_send_authReq( ) @ #j) ∧ (¬(∃ X #r. Rev( X ) @ #r))) ∧
+            (∀ ARPF1 ARPF2 #j.1 #k.
+              ((ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+              (#j.1 = #k))) ∧
+           (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+             ((Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+             (#j.1 = #k))) ∧
+          (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+            ((Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+            (#j.1 = #k))) ∧
+         (∀ AUSF AUSF2 #j.1 #k.
+           ((StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+           (#j.1 = #k))) ∧
+        (∀ AUSF AUSF2 #j.1 #k.
+          ((AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+       (∀ SNID1 SNID2 #j.1 #k.
+         ((StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+         (#j.1 = #k))) ∧
+      (∀ ARPF1 ARPF2 #j.1 #k.
+        ((StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+        (#j.1 = #k))) ∧
+     (∀ gNB1 gNB2 #j.1 #k.
+       ((GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+    (∀ SUPI1 SUPI2 #j.1 #k.
+      ((In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+      (#j.1 = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #j.
+  (SEAF_send_authReq( ) @ #j)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+    (Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SNID1 SNID2 #j.1 #k.
+    (StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ gNB1 gNB2 #j.1 #k.
+    (GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SUPI1 SUPI2 #j.1 #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j.1 = #k)"
+*/
+by sorry
+
+lemma trace_UE_receive_authReq:
+  exists-trace
+  "∃ #j.
+    (((((((((((UE_receive_authReq( ) @ #j) ∧ (¬(∃ X #r. Rev( X ) @ #r))) ∧
+             (∀ ARPF1 ARPF2 #j.1 #k.
+               ((ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+               (#j.1 = #k))) ∧
+            (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+              ((Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+              (#j.1 = #k))) ∧
+           (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+             ((Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+             (#j.1 = #k))) ∧
+          (∀ AUSF AUSF2 #j.1 #k.
+            ((StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+            (#j.1 = #k))) ∧
+         (∀ AUSF AUSF2 #j.1 #k.
+           ((AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+        (∀ SNID1 SNID2 #j.1 #k.
+          ((StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+          (#j.1 = #k))) ∧
+       (∀ ARPF1 ARPF2 #j.1 #k.
+         ((StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+         (#j.1 = #k))) ∧
+      (∀ gNB1 gNB2 #j.1 #k.
+        ((GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+     (∀ SUPI1 SUPI2 #j.1 #k.
+       ((In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+       (#j.1 = #k))) ∧
+    (∀ #j.1 #k.
+      ((UE_send_attach( ) @ #j.1) ∧ (UE_send_attach( ) @ #k)) ⇒ (#j.1 = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #j.
+  (UE_receive_authReq( ) @ #j)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+    (Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SNID1 SNID2 #j.1 #k.
+    (StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ gNB1 gNB2 #j.1 #k.
+    (GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SUPI1 SUPI2 #j.1 #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ #j.1 #k.
+    (UE_send_attach( ) @ #j.1) ∧ (UE_send_attach( ) @ #k) ⇒ #j.1 = #k)"
+*/
+by sorry
+
+lemma trace_GNB_receive_authReq:
+  exists-trace
+  "∃ #j. (GNB_receive_authReq( ) @ #j) ∧ (¬(∃ X #r. Rev( X ) @ #r))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #j. (GNB_receive_authReq( ) @ #j) ∧ ∀ X #r. (Rev( X ) @ #r) ⇒ ⊥"
+*/
+by sorry
+
+lemma trace_exists_SEAF_receive_aia:
+  exists-trace
+  "∃ #j.
+    ((((((((((SEAF_receive_aia( ) @ #j) ∧ (¬(∃ X #r. Rev( X ) @ #r))) ∧
+            (∀ ARPF1 ARPF2 #j.1 #k.
+              ((ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+              (#j.1 = #k))) ∧
+           (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+             ((Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+             (#j.1 = #k))) ∧
+          (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+            ((Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+            (#j.1 = #k))) ∧
+         (∀ AUSF AUSF2 #j.1 #k.
+           ((StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+           (#j.1 = #k))) ∧
+        (∀ AUSF AUSF2 #j.1 #k.
+          ((AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+       (∀ SNID1 SNID2 #j.1 #k.
+         ((StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+         (#j.1 = #k))) ∧
+      (∀ ARPF1 ARPF2 #j.1 #k.
+        ((StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+        (#j.1 = #k))) ∧
+     (∀ gNB1 gNB2 #j.1 #k.
+       ((GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+    (∀ SUPI1 SUPI2 #j.1 #k.
+      ((In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+      (#j.1 = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #j.
+  (SEAF_receive_aia( ) @ #j)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+    (Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SNID1 SNID2 #j.1 #k.
+    (StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ gNB1 gNB2 #j.1 #k.
+    (GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SUPI1 SUPI2 #j.1 #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j.1 = #k)"
+*/
+by sorry
+
+lemma trace_exists_SEAF_receive_attachReq:
+  exists-trace
+  "∃ #j.
+    ((((((((((SEAF_receive_attachReq( ) @ #j) ∧ (¬(∃ X #r. Rev( X ) @ #r))) ∧
+            (∀ ARPF1 ARPF2 #j.1 #k.
+              ((ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+              (#j.1 = #k))) ∧
+           (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+             ((Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+             (#j.1 = #k))) ∧
+          (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+            ((Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+            (#j.1 = #k))) ∧
+         (∀ AUSF AUSF2 #j.1 #k.
+           ((StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+           (#j.1 = #k))) ∧
+        (∀ AUSF AUSF2 #j.1 #k.
+          ((AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+       (∀ SNID1 SNID2 #j.1 #k.
+         ((StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+         (#j.1 = #k))) ∧
+      (∀ ARPF1 ARPF2 #j.1 #k.
+        ((StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+        (#j.1 = #k))) ∧
+     (∀ gNB1 gNB2 #j.1 #k.
+       ((GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+    (∀ SUPI1 SUPI2 #j.1 #k.
+      ((In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+      (#j.1 = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #j.
+  (SEAF_receive_attachReq( ) @ #j)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+    (Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SNID1 SNID2 #j.1 #k.
+    (StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ gNB1 gNB2 #j.1 #k.
+    (GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SUPI1 SUPI2 #j.1 #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j.1 = #k)"
+*/
+by sorry
+
+lemma trace_exists_GNB_receive_attachReq:
+  exists-trace
+  "∃ #j.
+    ((((((((((GNB_receive_attachReq( ) @ #j) ∧ (¬(∃ X #r. Rev( X ) @ #r))) ∧
+            (∀ ARPF1 ARPF2 #j.1 #k.
+              ((ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+              (#j.1 = #k))) ∧
+           (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+             ((Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+             (#j.1 = #k))) ∧
+          (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+            ((Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+            (#j.1 = #k))) ∧
+         (∀ AUSF AUSF2 #j.1 #k.
+           ((StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+           (#j.1 = #k))) ∧
+        (∀ AUSF AUSF2 #j.1 #k.
+          ((AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+       (∀ SNID1 SNID2 #j.1 #k.
+         ((StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+         (#j.1 = #k))) ∧
+      (∀ ARPF1 ARPF2 #j.1 #k.
+        ((StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+        (#j.1 = #k))) ∧
+     (∀ gNB1 gNB2 #j.1 #k.
+       ((GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+    (∀ SUPI1 SUPI2 #j.1 #k.
+      ((In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+      (#j.1 = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #j.
+  (GNB_receive_attachReq( ) @ #j)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+    (Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SNID1 SNID2 #j.1 #k.
+    (StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ gNB1 gNB2 #j.1 #k.
+    (GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SUPI1 SUPI2 #j.1 #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j.1 = #k)"
+*/
+by sorry
+
+lemma trace_exists_UPF_recv_data:
+  exists-trace
+  "∃ #j.
+    (((((((((((UPF_recv_data( ) @ #j) ∧ (¬(∃ X #r. Rev( X ) @ #r))) ∧
+             (∀ ARPF1 ARPF2 #j.1 #k.
+               ((ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+               (#j.1 = #k))) ∧
+            (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+              ((Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)) ⇒
+              (#j.1 = #k))) ∧
+           (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+             ((Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)) ⇒
+             (#j.1 = #k))) ∧
+          (∀ AUSF AUSF2 #j.1 #k.
+            ((StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)) ⇒
+            (#j.1 = #k))) ∧
+         (∀ AUSF AUSF2 #j.1 #k.
+           ((AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+        (∀ SNID1 SNID2 #j.1 #k.
+          ((StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)) ⇒
+          (#j.1 = #k))) ∧
+       (∀ ARPF1 ARPF2 #j.1 #k.
+         ((StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)) ⇒
+         (#j.1 = #k))) ∧
+      (∀ gNB1 gNB2 #j.1 #k.
+        ((GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j.1 = #k))) ∧
+     (∀ SUPI1 SUPI2 #j.1 #k.
+       ((In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+       (#j.1 = #k))) ∧
+    (∀ #j.1 #k.
+      ((GNB_receive_attachReq( ) @ #j.1) ∧ (GNB_receive_attachReq( ) @ #k)) ⇒
+      (#j.1 = #k))"
+/*
+guarded formula characterizing all satisfying traces:
+"∃ #j.
+  (UPF_recv_data( ) @ #j)
+ ∧
+  (∀ X #r. (Rev( X ) @ #r) ⇒ ⊥) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j.1) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ S1 S2 ARPF1 ARPF2 #j.1 #k.
+    (Subscribe( S1, ARPF1 ) @ #j.1) ∧ (Subscribe( S2, ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ SQN1 c1 SQN2 c2 #j.1 #k.
+    (Sqn_ARPF_Use( SQN1, c1 ) @ #j.1) ∧ (Sqn_ARPF_Use( SQN2, c2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (StartAUSFSession( AUSF ) @ #j.1) ∧ (StartAUSFSession( AUSF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ AUSF AUSF2 #j.1 #k.
+    (AUSF_ID( AUSF ) @ #j.1) ∧ (AUSF_ID( AUSF2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SNID1 SNID2 #j.1 #k.
+    (StartSeafSession( SNID1 ) @ #j.1) ∧ (StartSeafSession( SNID2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ ARPF1 ARPF2 #j.1 #k.
+    (StartARPFSession( ARPF1 ) @ #j.1) ∧ (StartARPFSession( ARPF2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ gNB1 gNB2 #j.1 #k.
+    (GNB_init( gNB1 ) @ #j.1) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j.1 = #k) ∧
+  (∀ SUPI1 SUPI2 #j.1 #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j.1) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j.1 = #k) ∧
+  (∀ #j.1 #k.
+    (GNB_receive_attachReq( ) @ #j.1) ∧ (GNB_receive_attachReq( ) @ #k)
+   ⇒
+    #j.1 = #k)"
+*/
+by sorry
+
+lemma LI_intercept_noRevs:
+  all-traces
+  "∀ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP #li #seaf.
+    (((POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+       ) @ #li) ∧
+      (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+       ) @ #seaf)) ∧
+     (¬(∃ R #rev. Rev( R ) @ #rev))) ⇒
+    (∃ #send. (UserSend( SUPI, APP ) @ #send) ∧ (#send < #li))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP #li #seaf.
+  (POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+   ) @ #li) ∧
+  (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+   ) @ #seaf)
+ ∧
+  (∀ R #rev. (Rev( R ) @ #rev) ⇒ ⊥) ∧
+  (∀ #send. (UserSend( SUPI, APP ) @ #send) ⇒ ¬(#send < #li))"
+*/
+by sorry
+
+lemma LI_intercept_RevK:
+  all-traces
+  "∀ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+     #setup.
+    (((((POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+         ) @ #li) ∧
+        (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+         ) @ #seaf)) ∧
+       (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)) ∧
+      (¬(∃ ANY_NF ANY_SUPI #rev. Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev))) ∧
+     (¬(∃ ANY_HN ANY_ARPF #rev. Rev( <'HN', ANY_ARPF, ANY_HN> ) @ #rev))) ⇒
+    (∃ #send. (UserSend( SUPI, APP ) @ #send) ∧ (#send < #li))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+   #setup.
+  (POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+   ) @ #li) ∧
+  (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+   ) @ #seaf) ∧
+  (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)
+ ∧
+  (∀ ANY_NF ANY_SUPI #rev. (Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev) ⇒ ⊥) ∧
+  (∀ ANY_HN ANY_ARPF #rev. (Rev( <'HN', ANY_ARPF, ANY_HN> ) @ #rev) ⇒ ⊥) ∧
+  (∀ #send. (UserSend( SUPI, APP ) @ #send) ⇒ ¬(#send < #li))"
+*/
+by sorry
+
+lemma LI_intercept_RevK_RevNFstar:
+  all-traces
+  "∀ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+     #setup.
+    (((((POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+         ) @ #li) ∧
+        (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+         ) @ #seaf)) ∧
+       (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)) ∧
+      (¬(∃ #rev. Rev( <'NF', SUPI, NF> ) @ #rev))) ∧
+     (¬(∃ ANY_HN ANY_SUPI #rev. Rev( <'HN', ANY_SUPI, ANY_HN> ) @ #rev))) ⇒
+    (∃ #send. (UserSend( SUPI, APP ) @ #send) ∧ (#send < #li))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+   #setup.
+  (POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+   ) @ #li) ∧
+  (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+   ) @ #seaf) ∧
+  (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)
+ ∧
+  (∀ #rev. (Rev( <'NF', SUPI, NF> ) @ #rev) ⇒ ⊥) ∧
+  (∀ ANY_HN ANY_SUPI #rev. (Rev( <'HN', ANY_SUPI, ANY_HN> ) @ #rev) ⇒ ⊥) ∧
+  (∀ #send. (UserSend( SUPI, APP ) @ #send) ⇒ ¬(#send < #li))"
+*/
+by sorry
+
+lemma LI_intercept_RevHN [hide_lemma=secrecy_HN, use_induction]:
+  all-traces
+  "∀ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+     #setup.
+    (((((POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+         ) @ #li) ∧
+        (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+         ) @ #seaf)) ∧
+       (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)) ∧
+      (¬(∃ ANY_NF ANY_SUPI #rev. Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev))) ∧
+     (¬(∃ ARPF.1 #rev. Rev( <SUPI, ARPF.1> ) @ #rev))) ⇒
+    (∃ #send. (UserSend( SUPI, APP ) @ #send) ∧ (#send < #li))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+   #setup.
+  (POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+   ) @ #li) ∧
+  (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+   ) @ #seaf) ∧
+  (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)
+ ∧
+  (∀ ANY_NF ANY_SUPI #rev. (Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev) ⇒ ⊥) ∧
+  (∀ ARPF.1 #rev. (Rev( <SUPI, ARPF.1> ) @ #rev) ⇒ ⊥) ∧
+  (∀ #send. (UserSend( SUPI, APP ) @ #send) ⇒ ¬(#send < #li))"
+*/
+by sorry
+
+lemma LI_intercept_RevK_RevHN [hide_lemma=secrecy_HN, use_induction]:
+  all-traces
+  "∀ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+     #setup.
+    ((((POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+        ) @ #li) ∧
+       (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+        ) @ #seaf)) ∧
+      (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)) ∧
+     (¬(∃ ANY_NF ANY_SUPI #rev. Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev))) ⇒
+    (∃ #send. (UserSend( SUPI, APP ) @ #send) ∧ (#send < #li))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+   #setup.
+  (POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+   ) @ #li) ∧
+  (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+   ) @ #seaf) ∧
+  (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)
+ ∧
+  (∀ ANY_NF ANY_SUPI #rev. (Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev) ⇒ ⊥) ∧
+  (∀ #send. (UserSend( SUPI, APP ) @ #send) ⇒ ¬(#send < #li))"
+*/
+by sorry
+
+lemma LI_intercept_RevK_RevHN_after_Setup [hide_lemma=secrecy_HN,
+                                           use_induction]:
+  all-traces
+  "∀ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+     #setup.
+    (((((POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+         ) @ #li) ∧
+        (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+         ) @ #seaf)) ∧
+       (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)) ∧
+      (¬(∃ ANY_NF ANY_SUPI #rev. Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev))) ∧
+     (¬(∃ ANY_HN ANY_SUPI #rev.
+         (Rev( <'HN', ANY_SUPI, ANY_HN> ) @ #rev) ∧ (#rev < #setup)))) ⇒
+    (∃ #send. (UserSend( SUPI, APP ) @ #send) ∧ (#send < #li))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+   #setup.
+  (POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+   ) @ #li) ∧
+  (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+   ) @ #seaf) ∧
+  (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)
+ ∧
+  (∀ ANY_NF ANY_SUPI #rev. (Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev) ⇒ ⊥) ∧
+  (∀ ANY_HN ANY_SUPI #rev.
+    (Rev( <'HN', ANY_SUPI, ANY_HN> ) @ #rev) ⇒ ¬(#rev < #setup)) ∧
+  (∀ #send. (UserSend( SUPI, APP ) @ #send) ⇒ ¬(#send < #li))"
+*/
+by sorry
+
+lemma LI_intercept_RevHN_dispute [hide_lemma=secrecy_HN]:
+  all-traces
+  "∀ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+     #setup.
+    (((((POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+         ) @ #li) ∧
+        (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+         ) @ #seaf)) ∧
+       (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)) ∧
+      (¬(∃ ANY_NF ANY_SUPI #rev. Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev))) ∧
+     (¬(∃ ARPF.1 #rev. Rev( <SUPI, ARPF.1> ) @ #rev))) ⇒
+    ((∃ #send. (UserSend( SUPI, APP ) @ #send) ∧ (#send < #li)) ∨
+     (∃ beta_SUPI_d #dispute.
+       (Dispute( SUPI, beta_SUPI_d ) @ #dispute) ∧
+       (¬(beta_SUPI_d = beta_SUPI))))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+   #setup.
+  (POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+   ) @ #li) ∧
+  (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+   ) @ #seaf) ∧
+  (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)
+ ∧
+  (∀ ANY_NF ANY_SUPI #rev. (Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev) ⇒ ⊥) ∧
+  (∀ ARPF.1 #rev. (Rev( <SUPI, ARPF.1> ) @ #rev) ⇒ ⊥) ∧
+  (∀ #send. (UserSend( SUPI, APP ) @ #send) ⇒ ¬(#send < #li)) ∧
+  (∀ beta_SUPI_d #dispute.
+    (Dispute( SUPI, beta_SUPI_d ) @ #dispute) ⇒ beta_SUPI_d = beta_SUPI)"
+*/
+simplify
+solve( (∀ #k. (!KU( ~NF ) @ #k) ⇒ ⊥)  ∥
+       (∃ SUPI #r. (Rev( <'NF', SUPI, ~NF> ) @ #r)) )
+  case case_1
+  solve( St_1_UPF( <~SUPI, ~PDUsession, ~SUPI, 
+                    <$t2, sign(<$t2, ~SUPI, pk(~NF)>, x), pk(~NF)>, RES_star, k_ECIES, 
+                    sign(<RES_star, $gNB, k_ECIES, $t>, ~NF), $t, $gNB>
+         ) ▶₀ #li )
+    case init_PDU_session_UPF
+    solve( St_6_SEAF( ~SEAF_State_ID, SNID, SUCI, ARPF, AUSF, RAND, RES_star,
+                      $gNB, ~gNB_State_ID, UE_sec_capabilities, RES_star,
+                      sign(<RES_star, $gNB, k_ECIES, $t>, ~NF), $t
+           ) ▶₀ #seaf )
+      case seaf_send_ac
+      solve( !ARPF( $ARPF, pk(~HN) ) ▶₄ #seaf )
+        case init_ARPF
+        solve( UE_sent_req( ~SUPI, ARPF.1, ~NF ) ▶₀ #setup )
+          case UE_setup_send_req
+          solve( !ARPF( $ARPF.1, pk(~HN) ) ▶₂ #setup )
+            case init_ARPF
+            solve( !LTKSym( ~SUPI, $ARPF, ~K ) ▶₃ #setup )
+              case init_UE_ARPF
+              solve( F_RcvS( <'gNB_UPF', 'gNB', 'UPF'>, $gNB, ~PDUsession,
+                             <'UP', <~appData, sign(~appData, ~NF)>, ~PDUsession>
+                     ) ▶₁ #li )
+                case receive_insecure
+                solve( !KU( sign(<RES_star, $gNB, k_ECIES, $t>, ~NF) ) @ #vk.56 )
+                  case c_sign
+                  by contradiction /* from formulas */
+                next
+                  case ue_send_authResp
+                  solve( F_RcvS( <'seaf_ausf', 'AUSF', 'SEAF'>, $AUSF, <'5G', $VPLMNID.1>,
+                                 <'confirm', 
+                                  <~SUPI, K_SEAF, getkey(encap(pk(~HN), ~R)), $t2, 
+                                   sign(<$t2, ~SUPI, pk(~NF)>, ~HN), pk(~NF)>, 
+                                  ~SEAF_State_ID>
+                         ) ▶₁ #seaf )
+                    case receive_insecure
+                    solve( !KU( sign(~appData, ~NF) ) @ #vk.99 )
+                      case c_sign
+                      by contradiction /* from formulas */
+                    next
+                      case send_insecure
+                      solve( !KU( getkey(encap(pk(~HN), ~R)) ) @ #vk.71 )
+                        case c_getkey
+                        solve( !KU( encap(pk(~HN), ~R) ) @ #vk.262 )
+                          case c_encap
+                          solve( !KU( ~R ) @ #vk.264 )
+                            case send_insecure
+                            solve( !KU( senc(<<~appData, sign(~appData, ~NF)>, 
+                                              NIA(KDFA(K_gNB, 'N_UP_int_alg'), ~appData)>,
+                                             KDFA(K_gNB, 'N_UP_enc_alg'))
+                                   ) @ #vk.141 )
+                              case c_senc
+                              by contradiction /* cyclic */
+                            next
+                              case ue_send_data
+                              by contradiction /* from formulas */
+                            qed
+                          qed
+                        qed
+                      next
+                        case send_insecure
+                        solve( !KU( senc(<<~appData, sign(~appData, ~NF)>, 
+                                          NIA(KDFA(K_gNB, 'N_UP_int_alg'), ~appData)>,
+                                         KDFA(K_gNB, 'N_UP_enc_alg'))
+                               ) @ #vk.132 )
+                          case c_senc
+                          by contradiction /* cyclic */
+                        next
+                          case ue_send_data
+                          by contradiction /* from formulas */
+                        qed
+                      next
+                        case ue_send_attachReq
+                        solve( !KU( ~HN ) @ #vk.262 )
+                          case reveal_HN
+                          solve( !KU( senc(<<~appData, sign(~appData, ~NF)>, 
+                                            NIA(KDFA(K_gNB, 'N_UP_int_alg'), ~appData)>,
+                                           KDFA(K_gNB, 'N_UP_enc_alg'))
+                                 ) @ #vk.132 )
+                            case c_senc
+                            by contradiction /* cyclic */
+                          next
+                            case ue_send_data
+                            by contradiction /* from formulas */
+                          qed
+                        next
+                          case send_insecure
+                          solve( !KU( senc(<<~appData, sign(~appData, ~NF)>, 
+                                            NIA(KDFA(K_gNB, 'N_UP_int_alg'), ~appData)>,
+                                           KDFA(K_gNB, 'N_UP_enc_alg'))
+                                 ) @ #vk.139 )
+                            case c_senc
+                            by contradiction /* cyclic */
+                          next
+                            case ue_send_data
+                            by contradiction /* from formulas */
+                          qed
+                        qed
+                      qed
+                    next
+                      case ue_send_data
+                      by contradiction /* from formulas */
+                    qed
+                  qed
+                qed
+              qed
+            qed
+          qed
+        qed
+      qed
+    qed
+  qed
+next
+  case case_2
+  by contradiction /* from formulas */
+qed
+
+lemma LI_intercept_RevK_RevHN_dispute [hide_lemma=secrecy_HN]:
+  all-traces
+  "∀ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+     #setup.
+    ((((POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+        ) @ #li) ∧
+       (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+        ) @ #seaf)) ∧
+      (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)) ∧
+     (¬(∃ ANY_NF ANY_SUPI #rev. Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev))) ⇒
+    ((∃ #send. (UserSend( SUPI, APP ) @ #send) ∧ (#send < #li)) ∨
+     (∃ beta_SUPI_d #dispute.
+       (Dispute( SUPI, beta_SUPI_d ) @ #dispute) ∧
+       (¬(beta_SUPI_d = beta_SUPI))))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ SUPI beta_SUPI RES_star k_ECIES sig_NF t gNB APP ARPF NF #li #seaf
+   #setup.
+  (POI_UPF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>, APP
+   ) @ #li) ∧
+  (POI_CTX_SEAF( <SUPI, beta_SUPI, RES_star, k_ECIES, sig_NF, t, gNB>
+   ) @ #seaf) ∧
+  (UE_recv_setup_res( SUPI, ARPF, NF ) @ #setup)
+ ∧
+  (∀ ANY_NF ANY_SUPI #rev. (Rev( <'NF', ANY_SUPI, ANY_NF> ) @ #rev) ⇒ ⊥) ∧
+  (∀ #send. (UserSend( SUPI, APP ) @ #send) ⇒ ¬(#send < #li)) ∧
+  (∀ beta_SUPI_d #dispute.
+    (Dispute( SUPI, beta_SUPI_d ) @ #dispute) ⇒ beta_SUPI_d = beta_SUPI)"
+*/
+by sorry
+
+lemma secrecy_Ki:
+  all-traces
+  "∀ supi ki #i.
+    ((LongTermKey( supi, ki ) @ #i) ∧
+     (¬(∃ #r. RevealKforSUPI( supi ) @ #r))) ⇒
+    (¬(∃ #j. K( ki ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ supi ki #i.
+  (LongTermKey( supi, ki ) @ #i)
+ ∧
+  (∀ #r. (RevealKforSUPI( supi ) @ #r) ⇒ ⊥) ∧ (∃ #j. (K( ki ) @ #j))"
+*/
+by sorry
+
+lemma secrecy_K_AUSF:
+  all-traces
+  "∀ a b c d t #i.
+    ((Secret1( <a, b, c, d>, <'K_AUSF', d>, t ) @ #i) ∧
+     (¬(∃ R #rev. Rev( R ) @ #rev))) ⇒
+    (¬(∃ #j. K( t ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b c d t #i.
+  (Secret1( <a, b, c, d>, <'K_AUSF', d>, t ) @ #i)
+ ∧
+  (∀ R #rev. (Rev( R ) @ #rev) ⇒ ⊥) ∧ (∃ #j. (K( t ) @ #j))"
+*/
+by sorry
+
+lemma secrecy_K_AUSF_restricted:
+  all-traces
+  "∀ a b c d t #i.
+    ((((((((((Secret1( <a, b, c, d>, <'K_AUSF', d>, t ) @ #i) ∧
+             (¬(∃ R #rev. Rev( R ) @ #rev))) ∧
+            (∀ x y ARPF SUPI #i.1 #j.
+              ((Subscribe( x, y ) @ #i.1) ∧ (Subscribe( SUPI, ARPF ) @ #j)) ⇒
+              (#i.1 = #j))) ∧
+           (∀ AUSF #i.1 #j.
+             ((AUSF_ID( AUSF ) @ #i.1) ∧ (AUSF_ID( AUSF ) @ #j)) ⇒ (#i.1 = #j))) ∧
+          (∀ #i.1 #j. ((SERV_NET( ) @ #i.1) ∧ (SERV_NET( ) @ #j)) ⇒ (#i.1 = #j))) ∧
+         (∀ #i.1 #j. ((ARPF_1( ) @ #i.1) ∧ (ARPF_1( ) @ #j)) ⇒ (#i.1 = #j))) ∧
+        (∀ SNID SUPI #i.1 #j.
+          ((SEAF_SUPI( SNID, SUPI ) @ #i.1) ∧ (SEAF_SUPI( SNID, SUPI ) @ #j)) ⇒
+          (#i.1 = #j))) ∧
+       (∀ ARPF1 ARPF2 #j #k.
+         ((ARPF_HomeNet( ARPF1 ) @ #j) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+         (#j = #k))) ∧
+      (∀ gNB1 gNB2 #j #k.
+        ((GNB_init( gNB1 ) @ #j) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j = #k))) ∧
+     (∀ SUPI1 SUPI2 #j #k.
+       ((In_Attach_SUPI( SUPI1 ) @ #j) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+       (#j = #k))) ⇒
+    (¬(∃ #j. K( t ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b c d t #i.
+  (Secret1( <a, b, c, d>, <'K_AUSF', d>, t ) @ #i)
+ ∧
+  (∀ R #rev. (Rev( R ) @ #rev) ⇒ ⊥) ∧
+  (∀ x y ARPF SUPI #i.1 #j.
+    (Subscribe( x, y ) @ #i.1) ∧ (Subscribe( SUPI, ARPF ) @ #j)
+   ⇒
+    #i.1 = #j) ∧
+  (∀ AUSF #i.1 #j.
+    (AUSF_ID( AUSF ) @ #i.1) ∧ (AUSF_ID( AUSF ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ #i.1 #j. (SERV_NET( ) @ #i.1) ∧ (SERV_NET( ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ #i.1 #j. (ARPF_1( ) @ #i.1) ∧ (ARPF_1( ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ SNID SUPI #i.1 #j.
+    (SEAF_SUPI( SNID, SUPI ) @ #i.1) ∧ (SEAF_SUPI( SNID, SUPI ) @ #j)
+   ⇒
+    #i.1 = #j) ∧
+  (∀ ARPF1 ARPF2 #j #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j) ∧ (ARPF_HomeNet( ARPF2 ) @ #k) ⇒ #j = #k) ∧
+  (∀ gNB1 gNB2 #j #k.
+    (GNB_init( gNB1 ) @ #j) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j = #k) ∧
+  (∀ SUPI1 SUPI2 #j #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j = #k) ∧
+  (∃ #j. (K( t ) @ #j))"
+*/
+by sorry
+
+lemma secrecy_K_SEAF:
+  all-traces
+  "∀ a b c d t #i.
+    (((Secret1( <a, b, c, d>, <'K_SEAF', b>, t ) @ #i) ∧
+      (¬(∃ R #rev. Rev( R ) @ #rev))) ∧
+     (¬(∃ h1 h2 #r. Rev( <'HN', h1, h2> ) @ #r))) ⇒
+    (¬(∃ #j. K( t ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b c d t #i.
+  (Secret1( <a, b, c, d>, <'K_SEAF', b>, t ) @ #i)
+ ∧
+  (∀ R #rev. (Rev( R ) @ #rev) ⇒ ⊥) ∧
+  (∀ h1 h2 #r. (Rev( <'HN', h1, h2> ) @ #r) ⇒ ⊥) ∧
+  (∃ #j. (K( t ) @ #j))"
+*/
+by sorry
+
+lemma secrecy_K_SEAF_restricted:
+  all-traces
+  "∀ a b c d t #i.
+    ((((((((((Secret1( <a, b, c, d>, <'K_SEAF', b>, t ) @ #i) ∧
+             (¬(∃ R #rev. Rev( R ) @ #rev))) ∧
+            (∀ x y ARPF SUPI #i.1 #j.
+              ((Subscribe( x, y ) @ #i.1) ∧ (Subscribe( SUPI, ARPF ) @ #j)) ⇒
+              (#i.1 = #j))) ∧
+           (∀ AUSF #i.1 #j.
+             ((AUSF_ID( AUSF ) @ #i.1) ∧ (AUSF_ID( AUSF ) @ #j)) ⇒ (#i.1 = #j))) ∧
+          (∀ #i.1 #j. ((SERV_NET( ) @ #i.1) ∧ (SERV_NET( ) @ #j)) ⇒ (#i.1 = #j))) ∧
+         (∀ #i.1 #j. ((ARPF_1( ) @ #i.1) ∧ (ARPF_1( ) @ #j)) ⇒ (#i.1 = #j))) ∧
+        (∀ SNID SUPI #i.1 #j.
+          ((SEAF_SUPI( SNID, SUPI ) @ #i.1) ∧ (SEAF_SUPI( SNID, SUPI ) @ #j)) ⇒
+          (#i.1 = #j))) ∧
+       (∀ ARPF1 ARPF2 #j #k.
+         ((ARPF_HomeNet( ARPF1 ) @ #j) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+         (#j = #k))) ∧
+      (∀ gNB1 gNB2 #j #k.
+        ((GNB_init( gNB1 ) @ #j) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j = #k))) ∧
+     (∀ SUPI1 SUPI2 #j #k.
+       ((In_Attach_SUPI( SUPI1 ) @ #j) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+       (#j = #k))) ⇒
+    (¬(∃ #j. K( t ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b c d t #i.
+  (Secret1( <a, b, c, d>, <'K_SEAF', b>, t ) @ #i)
+ ∧
+  (∀ R #rev. (Rev( R ) @ #rev) ⇒ ⊥) ∧
+  (∀ x y ARPF SUPI #i.1 #j.
+    (Subscribe( x, y ) @ #i.1) ∧ (Subscribe( SUPI, ARPF ) @ #j)
+   ⇒
+    #i.1 = #j) ∧
+  (∀ AUSF #i.1 #j.
+    (AUSF_ID( AUSF ) @ #i.1) ∧ (AUSF_ID( AUSF ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ #i.1 #j. (SERV_NET( ) @ #i.1) ∧ (SERV_NET( ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ #i.1 #j. (ARPF_1( ) @ #i.1) ∧ (ARPF_1( ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ SNID SUPI #i.1 #j.
+    (SEAF_SUPI( SNID, SUPI ) @ #i.1) ∧ (SEAF_SUPI( SNID, SUPI ) @ #j)
+   ⇒
+    #i.1 = #j) ∧
+  (∀ ARPF1 ARPF2 #j #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j) ∧ (ARPF_HomeNet( ARPF2 ) @ #k) ⇒ #j = #k) ∧
+  (∀ gNB1 gNB2 #j #k.
+    (GNB_init( gNB1 ) @ #j) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j = #k) ∧
+  (∀ SUPI1 SUPI2 #j #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j = #k) ∧
+  (∃ #j. (K( t ) @ #j))"
+*/
+by sorry
+
+lemma secrecy_K_AMF:
+  all-traces
+  "∀ a b c d t #i.
+    ((Secret1( <a, b, c, d>, <'K_AMF', b>, t ) @ #i) ∧
+     (¬(∃ R #rev. Rev( R ) @ #rev))) ⇒
+    (¬(∃ #j. K( t ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b c d t #i.
+  (Secret1( <a, b, c, d>, <'K_AMF', b>, t ) @ #i)
+ ∧
+  (∀ R #rev. (Rev( R ) @ #rev) ⇒ ⊥) ∧ (∃ #j. (K( t ) @ #j))"
+*/
+by sorry
+
+lemma secrecy_K_AMF_restricted:
+  all-traces
+  "∀ a b c d t #i.
+    ((((((((((Secret1( <a, b, c, d>, <'K_AMF', b>, t ) @ #i) ∧
+             (¬(∃ R #rev. Rev( R ) @ #rev))) ∧
+            (∀ x y ARPF SUPI #i.1 #j.
+              ((Subscribe( x, y ) @ #i.1) ∧ (Subscribe( SUPI, ARPF ) @ #j)) ⇒
+              (#i.1 = #j))) ∧
+           (∀ AUSF #i.1 #j.
+             ((AUSF_ID( AUSF ) @ #i.1) ∧ (AUSF_ID( AUSF ) @ #j)) ⇒ (#i.1 = #j))) ∧
+          (∀ #i.1 #j. ((SERV_NET( ) @ #i.1) ∧ (SERV_NET( ) @ #j)) ⇒ (#i.1 = #j))) ∧
+         (∀ #i.1 #j. ((ARPF_1( ) @ #i.1) ∧ (ARPF_1( ) @ #j)) ⇒ (#i.1 = #j))) ∧
+        (∀ SNID SUPI #i.1 #j.
+          ((SEAF_SUPI( SNID, SUPI ) @ #i.1) ∧ (SEAF_SUPI( SNID, SUPI ) @ #j)) ⇒
+          (#i.1 = #j))) ∧
+       (∀ ARPF1 ARPF2 #j #k.
+         ((ARPF_HomeNet( ARPF1 ) @ #j) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+         (#j = #k))) ∧
+      (∀ gNB1 gNB2 #j #k.
+        ((GNB_init( gNB1 ) @ #j) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j = #k))) ∧
+     (∀ SUPI1 SUPI2 #j #k.
+       ((In_Attach_SUPI( SUPI1 ) @ #j) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+       (#j = #k))) ⇒
+    (¬(∃ #j. K( t ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b c d t #i.
+  (Secret1( <a, b, c, d>, <'K_AMF', b>, t ) @ #i)
+ ∧
+  (∀ R #rev. (Rev( R ) @ #rev) ⇒ ⊥) ∧
+  (∀ x y ARPF SUPI #i.1 #j.
+    (Subscribe( x, y ) @ #i.1) ∧ (Subscribe( SUPI, ARPF ) @ #j)
+   ⇒
+    #i.1 = #j) ∧
+  (∀ AUSF #i.1 #j.
+    (AUSF_ID( AUSF ) @ #i.1) ∧ (AUSF_ID( AUSF ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ #i.1 #j. (SERV_NET( ) @ #i.1) ∧ (SERV_NET( ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ #i.1 #j. (ARPF_1( ) @ #i.1) ∧ (ARPF_1( ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ SNID SUPI #i.1 #j.
+    (SEAF_SUPI( SNID, SUPI ) @ #i.1) ∧ (SEAF_SUPI( SNID, SUPI ) @ #j)
+   ⇒
+    #i.1 = #j) ∧
+  (∀ ARPF1 ARPF2 #j #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j) ∧ (ARPF_HomeNet( ARPF2 ) @ #k) ⇒ #j = #k) ∧
+  (∀ gNB1 gNB2 #j #k.
+    (GNB_init( gNB1 ) @ #j) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j = #k) ∧
+  (∀ SUPI1 SUPI2 #j #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j = #k) ∧
+  (∃ #j. (K( t ) @ #j))"
+*/
+by sorry
+
+lemma secrecy_KgNB:
+  all-traces
+  "∀ a b c d t #i.
+    ((Secret1( <a, b, c, d>, <'KGNB', d>, t ) @ #i) ∧
+     (¬(∃ R #rev. Rev( R ) @ #rev))) ⇒
+    (¬(∃ #j. K( t ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b c d t #i.
+  (Secret1( <a, b, c, d>, <'KGNB', d>, t ) @ #i)
+ ∧
+  (∀ R #rev. (Rev( R ) @ #rev) ⇒ ⊥) ∧ (∃ #j. (K( t ) @ #j))"
+*/
+by sorry
+
+lemma secrecy_KgNB_restricted:
+  all-traces
+  "∀ a b c d t #i.
+    ((((((((((Secret1( <a, b, c, d>, <'KGNB', d>, t ) @ #i) ∧
+             (¬(∃ R #rev. Rev( R ) @ #rev))) ∧
+            (∀ x y ARPF SUPI #i.1 #j.
+              ((Subscribe( x, y ) @ #i.1) ∧ (Subscribe( SUPI, ARPF ) @ #j)) ⇒
+              (#i.1 = #j))) ∧
+           (∀ AUSF #i.1 #j.
+             ((AUSF_ID( AUSF ) @ #i.1) ∧ (AUSF_ID( AUSF ) @ #j)) ⇒ (#i.1 = #j))) ∧
+          (∀ #i.1 #j. ((SERV_NET( ) @ #i.1) ∧ (SERV_NET( ) @ #j)) ⇒ (#i.1 = #j))) ∧
+         (∀ #i.1 #j. ((ARPF_1( ) @ #i.1) ∧ (ARPF_1( ) @ #j)) ⇒ (#i.1 = #j))) ∧
+        (∀ SNID SUPI #i.1 #j.
+          ((SEAF_SUPI( SNID, SUPI ) @ #i.1) ∧ (SEAF_SUPI( SNID, SUPI ) @ #j)) ⇒
+          (#i.1 = #j))) ∧
+       (∀ ARPF1 ARPF2 #j #k.
+         ((ARPF_HomeNet( ARPF1 ) @ #j) ∧ (ARPF_HomeNet( ARPF2 ) @ #k)) ⇒
+         (#j = #k))) ∧
+      (∀ gNB1 gNB2 #j #k.
+        ((GNB_init( gNB1 ) @ #j) ∧ (GNB_init( gNB2 ) @ #k)) ⇒ (#j = #k))) ∧
+     (∀ SUPI1 SUPI2 #j #k.
+       ((In_Attach_SUPI( SUPI1 ) @ #j) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)) ⇒
+       (#j = #k))) ⇒
+    (¬(∃ #j. K( t ) @ #j))"
+/*
+guarded formula characterizing all counter-examples:
+"∃ a b c d t #i.
+  (Secret1( <a, b, c, d>, <'KGNB', d>, t ) @ #i)
+ ∧
+  (∀ R #rev. (Rev( R ) @ #rev) ⇒ ⊥) ∧
+  (∀ x y ARPF SUPI #i.1 #j.
+    (Subscribe( x, y ) @ #i.1) ∧ (Subscribe( SUPI, ARPF ) @ #j)
+   ⇒
+    #i.1 = #j) ∧
+  (∀ AUSF #i.1 #j.
+    (AUSF_ID( AUSF ) @ #i.1) ∧ (AUSF_ID( AUSF ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ #i.1 #j. (SERV_NET( ) @ #i.1) ∧ (SERV_NET( ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ #i.1 #j. (ARPF_1( ) @ #i.1) ∧ (ARPF_1( ) @ #j) ⇒ #i.1 = #j) ∧
+  (∀ SNID SUPI #i.1 #j.
+    (SEAF_SUPI( SNID, SUPI ) @ #i.1) ∧ (SEAF_SUPI( SNID, SUPI ) @ #j)
+   ⇒
+    #i.1 = #j) ∧
+  (∀ ARPF1 ARPF2 #j #k.
+    (ARPF_HomeNet( ARPF1 ) @ #j) ∧ (ARPF_HomeNet( ARPF2 ) @ #k) ⇒ #j = #k) ∧
+  (∀ gNB1 gNB2 #j #k.
+    (GNB_init( gNB1 ) @ #j) ∧ (GNB_init( gNB2 ) @ #k) ⇒ #j = #k) ∧
+  (∀ SUPI1 SUPI2 #j #k.
+    (In_Attach_SUPI( SUPI1 ) @ #j) ∧ (In_Attach_SUPI( SUPI2 ) @ #k)
+   ⇒
+    #j = #k) ∧
+  (∃ #j. (K( t ) @ #j))"
+*/
+by sorry
+
+/* All well-formedness checks were successful. */
+
+end

@@ -1,0 +1,632 @@
+dnl // Channel Compromise File
+dnl
+ifdef(<!normal_channels!>,<!
+// This is a standard, secure channel abstraction, as previously used in work
+// by Basin, Radomirovic, and Schmid: Modeling Human Errors in Security Protocols
+// (CSF 2016)
+// Normal Send Secure and Receive Secure rules.
+// Model: "normal channels"
+	rule send_secure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendSecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+	rule receive_secure:
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[ReceiveSecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+
+/*
+	// holds
+	lemma rand_autn_src [sources]:
+		" All RAND AUTN #i. Out_Src(RAND, AUTN)@i
+			==> (Ex #j. Src(RAND, AUTN)@j & j < i)
+			| (Ex #j. KU(RAND)@j & j < i)
+			| (Ex #j. KU(AUTN)@j & j < i)
+			| (Ex #j #k . KU(AUTN)@j & j < i
+						& KU(RAND)@k & k < i)
+		"
+*/
+
+lemma autn_source_authreq[sources]:
+"(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+			==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i)
+			| (Ex #j. KU(AUTN)@ #j & #j < #i))
+"
+
+	!>,<!!>)dnl
+
+dnl
+dnl// Different behaviours for the secure channels
+ifdef(<!ausf_arpf_chan_only_dy!>,<!
+	// The AUSF-ARPF channel is compromised, but the SEAF-AUSF channel is secure.
+	// Model: "ausf arpf chan only DY"
+	// In this channel model, secrecy_UE auto-finds a counter-example
+	rule send_insecure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+	rule receive_insecure:
+		[In(<<channelname,SendType,ReceiveType>,A,B,m>)]
+		--[ReceiveInsecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+	// These two rules are the non-compromised rules: we use them for the AUSF-ARPF channel
+	rule send_secure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendSecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+	rule receive_secure:
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[ReceiveSecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+
+	// There do not exist any traces such that there are SendInsecure facts on the seaf_ausf channel
+	// This should force messages on the 'seaf_ausf' channel to go via {Send,Receive}Secure instead.
+	restriction only_ausf_arpf_chan_compromised_send:
+		"All cn A B m #i. SendInsecure(cn,A,B,m) @ #i ==> not(cn = 'seaf_ausf')"
+	restriction only_ausf_arpf_chan_compromised_receive:
+		"All cn A B m #i. ReceiveInsecure(cn,A,B,m) @ #i ==> not(cn = 'seaf_ausf')"
+		ifdef(<!core_naive_channels!>,<!
+	// Sources lemmas needed due to changing things from secure to Out/In. Naive channels
+	lemma main_sources[sources]:
+	"(All AUSF #i. AUSF_source(AUSF) @ #i
+				==> (Ex #j. AUSF_ID(AUSF)@ #j & #j < #i))
+	// lemma arpf_sources[sources]:
+	&(All ARPF #i. ARPF_source(ARPF) @ #i
+				==> (Ex #j. ARPF_HomeNet(ARPF)@ #j & #j < #i))
+	// lemma seaf_init[sources]:
+	&(All SEAF #i. SEAF_source(SEAF) @ #i
+				==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i)
+				| (Ex #j. KU(SEAF)@ #j & #j < #i))
+	// lemma supi_source[sources]:
+	&(All SUPI #i. SUPI_source(SUPI) @ #i
+				==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+				| (Ex #j. KU(SUPI)@ #j & #j < #i))
+	// lemma autn_source_authreq[sources]:
+	&(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i)
+				| (Ex #j. KU(AUTN)@ #j & #j < #i))
+	"
+	lemma rand_source_authreq[sources]:
+	"(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+					==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i)
+					| (Ex #j. KU(RAND)@ #j & #j < #i))"
+		!>,<!!>)dnl
+		ifdef(<!core_session_bound_channels!>,<!
+	// Sources lemmas needed due to changing things from secure to Out/In
+	// TLS-like channels
+	lemma main_sources[sources]:
+	"(All AUSF #i. AUSF_source(AUSF) @ #i
+				==> (Ex #j. AUSF_ID(AUSF)@ #j & #j < #i))"
+	lemma arpf_sources[sources]:
+	"(All ARPF #i. ARPF_source(ARPF) @ #i
+					==> (Ex #j. ARPF_HomeNet(ARPF)@ #j & #j < #i))"
+	lemma seaf_init[sources]:
+	"(All SEAF #i. SEAF_source(SEAF) @ #i
+					==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i)
+					| (Ex #j. KU(SEAF)@ #j & #j < #i))"
+	lemma supi_source[sources]:
+	"(All SUPI #i. SUPI_source(SUPI) @ #i
+					==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+					| (Ex #j. KU(SUPI)@ #j & #j < #i))"
+	lemma autn_source_authreq[sources]:
+	"(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i)
+				| (Ex #j. KU(AUTN)@ #j & #j < #i))
+	"
+	lemma rand_source_authreq[sources]:
+	"(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+					==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i)
+					| (Ex #j. KU(RAND)@ #j & #j < #i))"
+	// This one still doesn't autoprove under the 's' heuristic for some reason.
+	// Definitely true; super short proof. (see ausf_sources-short-proof.spthy)
+	// 'Human oracle'-instructions: induction, then St_ARPF(...)-->F_Rcv()-->St_1_AUSF-->Done.
+	// Original lemma commented out for posterity; proof included below.
+	// lemma ausf_sources_2[sources]:
+	// "(All AUSF_State_ID #i. AUSF_State_ID_use(AUSF_State_ID) @ #i
+	// 				==> (Ex #j. AUSF_State_ID_source(AUSF_State_ID)@ #j & #j < #i)
+	// 				| (Ex #j. KU(AUSF_State_ID)@ #j & #j < #i))"
+	lemma ausf_sources [sources]:
+	  all-traces
+	  "∀ AUSF_State_ID #i.
+	         (AUSF_State_ID_use( AUSF_State_ID ) @ #i) ⇒
+	         ((∃ #j.
+	            (AUSF_State_ID_source( AUSF_State_ID ) @ #j) ∧ (#j < #i)) ∨
+	          (∃ #j. (!KU( AUSF_State_ID ) @ #j) ∧ (#j < #i)))"
+	induction
+	  case empty_trace
+	  by contradiction /* from formulas */
+	next
+	  case non_empty_trace
+	  simplify
+	  solve( St_1_ARPF( ~ARPF_State_ID, ARPF, AUSF, SUPI, SNID, K, SQN,
+	                    AUSF_State_ID
+	         ) ▶₀ #i )
+	    case arpf_receive_AIReq
+	    solve( F_RcvS( <'ausf_arpf', 'AUSF',
+	                    'ARPF'>,
+	                   $AUSF, $ARPF,
+	                   <'air', <~SUPI, SNID, '3gpp_creds'>,
+	                    AUSF_State_ID>
+	           ) ▶₆ #vr )
+	      case receive_insecure
+	      by contradiction /* from formulas */
+	    next
+	      case receive_secure
+	      solve( St_1_AUSF( ~AUSF_State_ID, SNID, ~SUPI, $ARPF, $AUSF,
+	                        SEAF_State_ID
+	             ) ▶₀ #vr.6 )
+	        case ausf_receive_air
+	        by contradiction /* from formulas */
+	      qed
+	    qed
+	  qed
+	qed
+
+
+		!>,<!!>)dnl
+!>,<!dnl
+	ifdef(<!seaf_ausf_chan_only_dy!>,<!
+	// The SEAF-AUSF channel is compromised, but the AUSF-ARPF channel is secure.
+	// Model "seaf ausf chan only DY"
+	rule send_insecure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+	rule receive_insecure:
+		[In(<<channelname,SendType,ReceiveType>,A,B,m>)]
+		--[ReceiveInsecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+	// These two rules are the non-compromised rules: we use them for the AUSF-ARPF channel
+	rule send_secure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendSecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+	rule receive_secure:
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[ReceiveSecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+
+	// There do not exist any traces such that there are SendInsecure facts on the ausf_arpf channel
+	// This should force messages on the 'ausf_arpf' channel to potentially go via {Send,Receive}Secure instead.
+	restriction only_seaf_ausf_chan_compromised_send:
+		"All cn A B m #i. SendInsecure(cn,A,B,m) @ #i ==> not(cn = 'ausf_arpf')"
+	restriction only_seaf_ausf_chan_compromised_receive:
+		"All cn A B m #i. ReceiveInsecure(cn,A,B,m) @ #i ==> not(cn = 'ausf_arpf')"
+	restriction only_seaf_ausf_chan_compromised_send1:
+		"All cn A B m #i. SendSecure(cn,A,B,m) @ #i ==> not(cn = 'seaf_ausf')"
+	restriction only_seaf_ausf_chan_compromised_receive1:
+		"All cn A B m #i. ReceiveSecure(cn,A,B,m) @ #i ==> not(cn = 'seaf_ausf')"
+		ifdef(<!core_naive_channels!>,<!
+	// Sources lemmas needed due to changing things from secure to Out/In
+	lemma main_sources[sources]:
+	" (All AUSF #i. AUSF_source(AUSF) @ #i
+			==> (Ex #j. AUSF_ID(AUSF)@ #j & #j < #i))
+	& (All SEAF #i. SEAF_source(SEAF) @ #i
+			==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i)
+			| (Ex #j. KU(SEAF)@ #j & #j < #i))
+	& (All RAND #i. RAND_source(RAND) @ #i
+			==> (Ex x #j. Src(RAND, x)@ #j & #j < #i))
+	& (All AUTN #i. AUTN_source(AUTN) @ #i
+			==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	& (All SUPI #i. SUPI_source(SUPI) @ #i
+			==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+			| (Ex #j. KU(SUPI)@ #j & #j < #i))
+	& (All RAND #i. AuthReq_RAND_source(RAND) @ #i
+			==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i)
+			| (Ex #j. KU(RAND)@ #j & #j < #i))
+	& (All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+			==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i)
+			| (Ex #j. KU(AUTN)@ #j & #j < #i))
+	"
+		!>,<!!>)dnl
+		ifdef(<!core_session_bound_channels!>,<!
+	// Channels are TLS-like
+	// Sources lemmas needed due to changing things from secure to Out/In
+	lemma main_sources[sources]:
+	"(All SEAF #i. SEAF_source(SEAF) @ #i
+				==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i)
+				| (Ex #j. KU(SEAF)@ #j & #j < #i) )"
+	lemma main_sources_1[sources]:
+	"(All AUSF #i. AUSF_source(AUSF) @ #i
+				==> (Ex #j. AUSF_ID(AUSF)@ #j & #j < #i))"
+	lemma main_sources_2[sources]:
+	"(All SUPI #i. SUPI_source(SUPI) @ #i
+					==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+					| (Ex #j. KU(SUPI)@ #j & #j < #i))"
+	lemma main_sources_3[sources]:
+	"(All RAND #i. RAND_source(RAND) @ #i
+					==> (Ex x #j. Src(RAND, x)@ #j & #j < #i))"
+	lemma main_sources_4[sources]:
+	"(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+					==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i)
+					| (Ex #j. KU(RAND)@ #j & #j < #i) )"
+	lemma main_sources_5[sources]:
+	"(All AUTN #i. AUTN_source(AUTN) @ #i
+					==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))"
+	lemma main_sources_6[sources]:
+	"(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+					==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i)
+					| (Ex #j. KU(AUTN)@ #j & #j < #i) )"
+	lemma main_sources_7[sources]:
+	"(All AUSF_State_ID #i. AUSF_State_ID_use(AUSF_State_ID) @ #i
+					==> (Ex #j. AUSF_State_ID_source(AUSF_State_ID)@ #j & #j < #i))"
+	lemma main_sources_8[sources]:
+	"(All SEAF_State_ID #i. SEAF_State_ID_use(SEAF_State_ID) @ #i
+				==> (Ex #j. SEAF_State_ID_source(SEAF_State_ID)@ #j & #j < #i)
+				| (Ex #j. KU(SEAF_State_ID)@ #j & #j < #i) )"
+		!>,<!!>)dnl
+	!>,<!dnl
+		ifdef(<!both_channels_dy!>,<!
+	// Both channels are compromised, and SendSecure / Receive Secure is replaced with Out/In
+	// Model: "both channels DY"
+	rule send_insecure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+	rule receive_insecure:
+		[In(<<channelname,SendType,ReceiveType>,A,B,m>)]
+		--[ReceiveInsecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+		!>,<!!>)dnl
+	!>)dnl
+!>)dnl
+dnl
+dnl// Readable Channel properties
+ifdef(<!ausf_arpf_chan_only_readable!>,<!
+	// AUSF-ARPF channel is readable by the adversary, but not injectable
+	// Model "ausf arpf chan only readable"
+	rule send_insecure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m),
+		 Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+
+	rule send_secure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendSecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+	rule receive_secure:
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[ReceiveSecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+
+	restriction only_ausf_arpf_chan_compromised_send:
+		"All cn A B m #i. SendInsecure(cn,A,B,m) @ #i ==> cn = 'ausf_arpf'"
+		ifdef(<!core_naive_channels!>,<!
+	// Sources lemmas needed due to changing things from secure to Out/In
+	lemma main_sources[sources]:
+	"(All AUSF #i. AUSF_source(AUSF) @ #i
+				==> (Ex #j. AUSF_ID(AUSF)@ #j & #j < #i))
+	&(All ARPF #i. ARPF_source(ARPF) @ #i
+				==> (Ex #j. ARPF_HomeNet(ARPF)@ #j & #j < #i))
+	&(All SEAF #i. SEAF_source(SEAF) @ #i
+				==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i))
+	&(All SUPI #i. SUPI_source(SUPI) @ #i
+				==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+				| (Ex #j. KU(SUPI)@ #j & #j < #i))
+	&(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+				==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i))
+	&(All RAND #i. RAND_source(RAND) @ #i
+				==> (Ex x #j. Src(RAND, x)@ #j & #j < #i))
+	&(All AUTN #i. AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	&(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	"
+		!>,<!!>)dnl
+		ifdef(<!core_session_bound_channels!>,<!
+	// Channels are TLS-like
+	// Sources lemmas needed due to changing things from secure to Out/In
+	lemma main_sources[sources]:
+	"(All SEAF #i. SEAF_source(SEAF) @ #i
+				==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i))
+	&(All SUPI #i. SUPI_source(SUPI) @ #i
+				==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+				| (Ex #j. KU(SUPI)@ #j & #j < #i))
+	&(All RAND #i. RAND_source(RAND) @ #i
+				==> (Ex x #j. Src(RAND, x)@ #j & #j < #i))
+	&(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+				==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i))
+	&(All AUTN #i. AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	&(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	&(All AUSF_State_ID #i. AUSF_State_ID_use(AUSF_State_ID) @ #i
+				==> (Ex #j. AUSF_State_ID_source(AUSF_State_ID)@ #j & #j < #i))
+	&(All SEAF_State_ID #i. SEAF_State_ID_use(SEAF_State_ID) @ #i
+				==> (Ex #j. SEAF_State_ID_source(SEAF_State_ID)@ #j & #j < #i))
+	&(All SEAF_State_ID #i. SEAF_State_ID_use(SEAF_State_ID) @ #i
+	      ==> (Ex #j. SEAF_State_ID_source(SEAF_State_ID)@ #j & #j < #i))
+	&(All gNB_State_ID #i. GNB_State_ID_use(gNB_State_ID) @ #i
+	      ==> (Ex #j. GNB_State_ID_source(gNB_State_ID)@ #j & #j < #i))
+	"
+		!>,<!!>)dnl
+!>,<!dnl
+	ifdef(<!seaf_ausf_chan_only_readable!>,<!
+	// SEAF-AUSF channel is readable by the adversary, but not injectable
+	// Model "seaf ausf chan only readable"
+	rule send_insecure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m),
+		 Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+
+	rule send_secure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendSecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+	rule receive_secure:
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[ReceiveSecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+
+	restriction only_seaf_ausf_chan_compromised_send:
+		"All cn A B m #i. SendInsecure(cn,A,B,m) @ #i ==> cn = 'seaf_ausf'"
+
+		ifdef(<!core_naive_channels!>,<!
+	// Sources lemmas needed due to changing things from secure to Out/In
+	lemma main_sources[sources]:
+	"(All AUSF #i. AUSF_source(AUSF) @ #i
+				==> (Ex #j. AUSF_ID(AUSF)@ #j & #j < #i))
+	&(All ARPF #i. ARPF_source(ARPF) @ #i
+				==> (Ex #j. ARPF_HomeNet(ARPF)@ #j & #j < #i))
+	&(All SEAF #i. SEAF_source(SEAF) @ #i
+				==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i))
+	&(All SUPI #i. SUPI_source(SUPI) @ #i
+				==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+				| (Ex #j. KU(SUPI)@ #j & #j < #i))
+	&(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+				==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i))
+	&(All RAND #i. RAND_source(RAND) @ #i
+				==> (Ex x #j. Src(RAND, x)@ #j & #j < #i))
+	&(All AUTN #i. AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	&(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))"
+			!>,<!!>)dnl
+		ifdef(<!core_session_bound_channels!>,<!
+	// Channels are TLS-like
+	// Sources lemmas needed due to changing things from secure to Out/In
+	lemma main_sources[sources]:
+	"(All SEAF #i. SEAF_source(SEAF) @ #i
+				==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i))
+	&(All SUPI #i. SUPI_source(SUPI) @ #i
+				==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+				| (Ex #j. KU(SUPI)@ #j & #j < #i))
+	&(All RAND #i. RAND_source(RAND) @ #i
+				==> (Ex x #j. Src(RAND, x)@ #j & #j < #i))
+	&(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+				==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i))
+	&(All AUTN #i. AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	&(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	&(All AUSF_State_ID #i. AUSF_State_ID_use(AUSF_State_ID) @ #i
+				==> (Ex #j. AUSF_State_ID_source(AUSF_State_ID)@ #j & #j < #i))
+	&(All SEAF_State_ID #i. SEAF_State_ID_use(SEAF_State_ID) @ #i
+				==> (Ex #j. SEAF_State_ID_source(SEAF_State_ID)@ #j & #j < #i))
+	&(All gNB_State_ID #i. GNB_State_ID_use(gNB_State_ID) @ #i
+				==> (Ex #j. GNB_State_ID_source(gNB_State_ID)@ #j & #j < #i))
+
+	"
+			!>,<!!>)dnl
+	!>,<!dnl
+		ifdef(<!both_channels_readable!>,<!dnl
+			ifdef(<!core_naive_channels!>,<!
+	// Both channels are readable by the adversary, but not injectable
+	// Model "both channels readable"
+	// The channels are core-naive channels, i.e. NOT fixed, with no session binding.
+	rule send_insecure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m),
+		 Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+	rule receive_insecure:
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[ReceiveInsecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+	// Sources lemmas needed due to changing things from secure to Out/In
+	lemma main_sources[sources]:
+	"(All AUSF #i. AUSF_source(AUSF) @ #i
+				==> (Ex #j. AUSF_ID(AUSF)@ #j & #j < #i))
+	&(All ARPF #i. ARPF_source(ARPF) @ #i
+				==> (Ex #j. ARPF_HomeNet(ARPF)@ #j & #j < #i))
+	&(All SEAF #i. SEAF_source(SEAF) @ #i
+				==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i))
+	&(All SUPI #i. SUPI_source(SUPI) @ #i
+				==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+				| (Ex #j. KU(SUPI)@ #j & #j < #i))
+	&(All RAND #i. RAND_source(RAND) @ #i
+				==> (Ex x #j. Src(RAND, x)@ #j & #j < #i))
+	&(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+				==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i))
+	&(All AUTN #i. AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	&(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	"
+		!>,<!!>)dnl
+
+		ifdef(<!core_session_bound_channels!>,<!
+// Both Channels are readable by the adversary, and the channels are TLS-like
+	rule send_insecure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m),
+		 Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+	rule receive_insecure:
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[ReceiveInsecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+
+	// Sources lemmas needed due to changing things from secure to Out/In
+	lemma main_sources[sources]:
+	"(All SEAF #i. SEAF_source(SEAF) @ #i
+				==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i))
+	&(All SUPI #i. SUPI_source(SUPI) @ #i
+				==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+				| (Ex #j. KU(SUPI)@ #j & #j < #i))
+	&(All RAND #i. RAND_source(RAND) @ #i
+				==> (Ex x #j. Src(RAND, x)@ #j & #j < #i))
+	&(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+				==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i))
+	&(All AUTN #i. AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	&(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+				==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+	&(All AUSF_State_ID #i. AUSF_State_ID_use(AUSF_State_ID) @ #i
+				==> (Ex #j. AUSF_State_ID_source(AUSF_State_ID)@ #j & #j < #i))
+	&(All SEAF_State_ID #i. SEAF_State_ID_use(SEAF_State_ID) @ #i
+				==> (Ex #j. SEAF_State_ID_source(SEAF_State_ID)@ #j & #j < #i))
+	"
+			!>,<!!>)dnl
+	!>,<!dnl
+	dnl // Nothing inserted if none of these above cases are chosen.
+	!>)dnl
+!>)dnl
+!>)dnl
+
+
+ifdef(<!gnb_channels_only_readable!>,<!
+// GNB channels are readable by the adversary, but not injectable
+rule send_insecure:
+	[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+	--[SendInsecure(channelname,A,B,m)]->
+	[Sec(<channelname,SendType,ReceiveType>,A,B,m),
+	 Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+
+rule send_secure:
+	[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+	--[SendSecure(channelname,A,B,m)]->
+	[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+rule receive_secure:
+	[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+	--[ReceiveSecure(channelname,A,B,m)]->
+	[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+
+restriction only_gnb_seaf_chan_compromised_send:
+	"All cn A B m #i. SendInsecure(cn,A,B,m) @ #i ==>
+		(
+			  (cn = 'gNB_seaf')
+			| (cn = 'gNB_UPF')
+		)
+	"
+
+		lemma autn_source_authreq[sources]:
+		"(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+					==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i)
+					| (Ex #j. KU(AUTN)@ #j & #j < #i))
+		"
+
+/*
+	ifdef(<!core_session_bound_channels!>,<!
+// Channels are TLS-like
+// Sources lemmas needed due to changing things from secure to Out/In
+lemma main_sources[sources]:
+"(All SEAF #i. SEAF_source(SEAF) @ #i
+			==> (Ex #j. SEAF_ID(SEAF)@ #j & #j < #i))
+&(All SUPI #i. SUPI_source(SUPI) @ #i
+			==> (Ex  #j. SUPI_ID(SUPI)@ #j & #j < #i)
+			| (Ex #j. KU(SUPI)@ #j & #j < #i))
+&(All RAND #i. RAND_source(RAND) @ #i
+			==> (Ex x #j. Src(RAND, x)@ #j & #j < #i))
+&(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+			==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i))
+&(All AUTN #i. AUTN_source(AUTN) @ #i
+			==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+&(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+			==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i))
+&(All AUSF_State_ID #i. AUSF_State_ID_use(AUSF_State_ID) @ #i
+			==> (Ex #j. AUSF_State_ID_source(AUSF_State_ID)@ #j & #j < #i))
+&(All SEAF_State_ID #i. SEAF_State_ID_use(SEAF_State_ID) @ #i
+			==> (Ex #j. SEAF_State_ID_source(SEAF_State_ID)@ #j & #j < #i))
+&(All gNB_State_ID #i. GNB_State_ID_use(gNB_State_ID) @ #i
+			==> (Ex #j. GNB_State_ID_source(gNB_State_ID)@ #j & #j < #i))
+&(All seaf_UPF_ID #i. UPF_State_ID_use(seaf_UPF_ID)@ #i
+			==> (Ex #j. UPF_State_ID_source(seaf_UPF_ID)@ #j & #j < #i))
+&(All PDUsession #i. UPF_GNB_State_ID_use(PDUsession)@ #i
+			==> (Ex #j. UPF_GNB_State_ID_source(PDUsession)@ #j & #j < #i))
+
+"
+	!>,<!!>)dnl
+
+*/
+
+	!>)dnl
+
+	ifdef(<!any_channel_dy!>,<!
+	// any channel DY
+	rule send_insecure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m),
+		 Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+ 	rule receive_insecure:
+			[In(<<channelname,SendType,ReceiveType>,A,B,m>)]
+			--[ReceiveInsecure(channelname,A,B,m)]->
+			[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+	!>,<!!>)dnl
+
+	ifdef(<!dy_ro_rules!>,<!
+	// rules for DY and RO
+	rule send_insecure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m),
+		 Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+ 	rule receive_insecure:
+			[In(<<channelname,SendType,ReceiveType>,A,B,m>)]
+			--[ReceiveInsecure(channelname,A,B,m)]->
+			[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+
+	rule receive_insecure_RO:
+			[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+			--[ReceiveInsecure_RO(channelname,A,B,m)]->
+			[RcvS_RO(<channelname,SendType,ReceiveType>,A,B,m)]
+
+	!>,<! !>)dnl
+
+ifdef(<!internal_ro_rules!>,<!
+	// rules for RO
+	rule send_insecure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m),
+		 Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+ 	rule receive_insecure_RO:
+			[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+			--[ReceiveInsecure(channelname,A,B,m)]->
+			[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+	!>,<! !>)dnl
+
+ifdef(<!secure_and_ro_rules!>,<!
+	// rules for both secure and RO
+	rule send_secure:
+		[SndS(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendSecure(channelname,A,B,m)]->
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+	rule receive_secure:
+		[Sec(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[ReceiveSecure(channelname,A,B,m)]->
+		[RcvS(<channelname,SendType,ReceiveType>,A,B,m)]
+
+	rule send_insecure_RO:
+		[SndS_RO(<channelname,SendType,ReceiveType>,A,B,m)]
+		--[SendInsecure(channelname,A,B,m)]->
+		[Sec_RO(<channelname,SendType,ReceiveType>,A,B,m),
+		 Out(<<channelname,SendType,ReceiveType>,A,B,m>)]
+ 	 rule receive_insecure_RO:
+	 	[Sec_RO(<channelname,SendType,ReceiveType>,A,B,m)]
+	 	--[ReceiveInsecure(channelname,A,B,m)]->
+	 	[RcvS_RO(<channelname,SendType,ReceiveType>,A,B,m)]
+
+		lemma autn_source_authreq[sources]:
+		"(All AUTN #i. AuthReq_AUTN_source(AUTN) @ #i
+					==> (Ex x #j. Src(x, AUTN)@ #j & #j < #i)
+					| (Ex #j. KU(AUTN)@ #j & #j < #i))
+		"
+		lemma rand_source_authreq[sources]:
+		"(All RAND #i. AuthReq_RAND_source(RAND) @ #i
+						==> (Ex x #j. SrcRand(RAND, x)@ #j & #j < #i)
+						| (Ex #j. KU(RAND)@ #j & #j < #i))"
+!>,<! !>)dnl

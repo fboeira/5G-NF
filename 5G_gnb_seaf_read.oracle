@@ -1,0 +1,50 @@
+#!/usr/bin/env python
+
+import re
+import os
+import sys
+debug = True
+
+lines = sys.stdin.readlines()
+lemma = sys.argv[1]
+
+# INPUT:
+# - lines contain a list of "%i:goal" where "%i" is the index of the goal
+# - lemma contain the name of the lemma under scrutiny
+# OUTPUT:
+# - (on stdout) a list of ordered index separated by EOL
+
+
+rank = []             # list of list of goals, main list is ordered by priority
+maxPrio = 110
+for i in range(0,maxPrio):
+  rank.append([])
+
+for line in lines:
+    num = line.split(':')[0]
+    if re.match('.*.KU\( ~K.*', line): rank[105].append(num)
+    elif re.match('.*aia\'.*', line): rank[101].append(num)
+    elif re.match('.*St_.*', line): rank[100].append(num)
+    elif re.match('.*KU\( KDFA.*', line): rank[99].append(num)
+    elif re.match('.*f3.*', line): rank[98].append(num)
+    elif re.match('.*f4.*', line): rank[98].append(num)
+    elif re.match('.*f2.*', line): rank[98].append(num)
+    elif re.match('.*KU\( f1.*', line): rank[98].append(num)
+    elif re.match('.*\'aia\'.*', line): rank[97].append(num)
+    #elif re.match('.*\'attach\'.*', line): rank[95].append(num)
+    elif re.match('.*\'AIResp\'.*', line): rank[92].append(num)
+    #elif re.match('.*ARPFEntry.*', line): rank[94].append(num)
+    #elif re.match('.*\'air\'.*', line): rank[95].append(num)
+    elif re.match('.*KU\( ~sqn.*', line): rank[85].append(num)
+    elif re.match('.*KDF.*', line): rank[80].append(num)
+    elif re.match('.*St_.*', line): rank[70].append(num)
+    elif re.match('.*RcvS.*', line): rank[60].append(num)
+    elif re.match('.*ARPFEntry.*', line): rank[50].append(num)
+
+    elif re.match('.*!AUSF.*', line): rank[40].append(num)
+
+# Ordering all goals by ranking (higher first)
+for listGoals in reversed(rank):
+  for goal in listGoals:
+    sys.stderr.write(goal)
+    print(goal)
