@@ -1,4 +1,4 @@
-This is the README associated with the submission of the paper entitled "Non-Frameability for 5G Lawful Interception in Adversarial Scenarios"
+This is the README associated with the submission of the paper entitled "Provable Non-Frameability for 5G Lawful Interception"
 
 The main file is 5G.m4 and it is used as the base to generate all Tamarin files. To generate the model variants, we use the script 'generate_tamarin_files.sh', which sets the m4 macros, changes channels to read-only if necessary, etc.
 
